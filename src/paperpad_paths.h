@@ -9,6 +9,10 @@ extern "C" {
 // failure. Caller frees. Empty on non-Apple platforms.
 const char* paperpad_apple_application_support_dir(void);
 
+// Debug diagnostics (iOS only): logs the UIWindow bounds and the CAMetalLayer
+// drawable size currently in use. No-op elsewhere.
+void paperpad_log_window_diagnostics(void* ui_window, void* metal_layer);
+
 #ifdef __cplusplus
 }
 #endif

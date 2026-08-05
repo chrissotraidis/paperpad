@@ -38,12 +38,19 @@ if (APPLE)
     set(RT64_SDL_WINDOW_VULKAN FALSE CACHE BOOL "Use SDL windows for RT64 Vulkan" FORCE)
 endif()
 add_compile_definitions(HLSL_CPU)
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(RT64_BUILD_TOOLS OFF CACHE BOOL "RT64 host tools" FORCE)
+    set(PAPERPAD_IOS_DIR "${PAPERPAD_ROOT}/apple/app" CACHE PATH "PaperPad iOS shell sources")
+    set(DXC_PATH "${PAPERPAD_RENDERER}/src/contrib/dxc/bin/arm64/dxc-macos" CACHE FILEPATH "Host DXC")
+    set(SPIRV_CROSS_MSL_PATH "${PAPERPAD_ROOT}/build/bin/spirv_cross_msl" CACHE FILEPATH "Host spirv_cross_msl")
+    set(FILE_TO_C_PATH "${PAPERPAD_ROOT}/build-macos2/file_to_c" CACHE FILEPATH "Host file_to_c")
+    find_package(SDL2 REQUIRED CONFIG)
+endif()
 add_subdirectory("${PAPERPAD_RENDERER}" "${CMAKE_BINARY_DIR}/rt64")
 
 # ---- Runtime: N64ModernRuntime (mstan fork, static mobile profile) ---------
 set(N64MODERN_NO_DYNAMIC_CODE ON CACHE BOOL "Compile out runtime code generation" FORCE)
 set(WITH_ARES_BRIDGE OFF CACHE BOOL "" FORCE)
-set(RT64_BUILD_TOOLS ON CACHE BOOL "RT64 host tools" FORCE)
 add_subdirectory("${PAPERPAD_RUNTIME}" "${CMAKE_BINARY_DIR}/runtime")
 
 if (TARGET fmt)
@@ -65,7 +72,9 @@ target_include_directories(RecompiledFuncs PRIVATE
     "${PAPERPAD_RUNTIME}/N64Recomp/include"
 )
 
-find_package(SDL2 REQUIRED)
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    find_package(SDL2 REQUIRED)
+endif()
 
 add_executable(PaperPad
     src/paperpad_main.cpp
@@ -78,7 +87,33 @@ add_executable(PaperPad
     "${PM_GENERATED_RSP}"
 )
 
-if (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_sources(PaperPad PRIVATE
+        "${PAPERPAD_IOS_DIR}/ios_main.mm"
+        "${PAPERPAD_IOS_DIR}/rom_setup.mm"
+        "${PAPERPAD_IOS_DIR}/touch_tap_latch.h"
+        "${PAPERPAD_IOS_DIR}/PrivacyInfo.xcprivacy"
+        "${PAPERPAD_IOS_DIR}/ThirdPartyNotices.txt"
+        "${PAPERPAD_IOS_DIR}/Assets.xcassets")
+    set_source_files_properties(
+        "${PAPERPAD_IOS_DIR}/PrivacyInfo.xcprivacy"
+        "${PAPERPAD_IOS_DIR}/ThirdPartyNotices.txt"
+        "${PAPERPAD_IOS_DIR}/Assets.xcassets"
+        PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_compile_definitions(PaperPad PRIVATE SDL_MAIN_HANDLED=1)
+    set_target_properties(PaperPad PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_INFO_PLIST "${PAPERPAD_IOS_DIR}/Info.plist.in"
+        MACOSX_BUNDLE_BUNDLE_NAME "PaperPad"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.chrissotraidis.paperpad"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "0.1.0"
+        MACOSX_BUNDLE_BUNDLE_VERSION "1"
+        OUTPUT_NAME "PaperPad"
+        XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
+        XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${DEVELOPMENT_TEAM}"
+        XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.chrissotraidis.paperpad"
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
+elseif (APPLE)
     set_target_properties(PaperPad PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME "PaperPad"
@@ -101,10 +136,20 @@ target_include_directories(PaperPad PRIVATE
     "${CMAKE_BINARY_DIR}/rt64/src"
 )
 
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_include_directories(PaperPad PRIVATE
+        "${PAPERPAD_IOS_DIR}"
+        "${PAPERPAD_RUNTIME}/N64Recomp/include")
+endif()
+
 target_link_libraries(PaperPad PRIVATE
     RecompiledFuncs
     librecomp
     ultramodern
     rt64
-    SDL2::SDL2
 )
+if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    target_link_libraries(PaperPad PRIVATE SDL2::SDL2-static "-framework UIKit -framework Metal -framework QuartzCore -framework CoreGraphics -framework Foundation -framework UniformTypeIdentifiers")
+else()
+    target_link_libraries(PaperPad PRIVATE SDL2::SDL2)
+endif()

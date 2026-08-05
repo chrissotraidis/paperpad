@@ -36,6 +36,11 @@
 #include "ultramodern/ultramodern.hpp"
 
 #include "paperpad_input.h"
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y);
+extern "C" void paperpad_touch_attach(void* ui_window);
+#endif
 #include "paperpad_paths.h"
 
 namespace paper_mario {
@@ -70,6 +75,11 @@ namespace {
 
     SDL_Window* window = nullptr;
     SDL_GameController* controller = nullptr;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    // iOS: native handles retained for periodic window/layer diagnostics.
+    void* ios_ui_window = nullptr;
+    void* ios_metal_layer = nullptr;
+#endif
     SDL_AudioDeviceID audio_device = 0;
     SDL_AudioCVT audio_convert{};
     uint32_t sample_rate = 48000;
@@ -233,6 +243,10 @@ namespace {
         if ((++game_loop_count % 600) == 0) {
             std::fprintf(stderr, "[paperpad] game loop frames: %llu\n",
                 (unsigned long long)game_loop_count);
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+            // Periodic iOS window/layer diagnostics to catch post-rotation state.
+            paperpad_log_window_diagnostics(ios_ui_window, ios_metal_layer);
+#endif
         }
         if (original_step_game_loop != nullptr) {
             original_step_game_loop(rdram, ctx);
@@ -321,10 +335,31 @@ namespace {
 #elif defined(__linux__) || defined(__ANDROID__)
         return window;
 #elif defined(__APPLE__)
+#if TARGET_OS_IPHONE
+        // iOS: SDL owns the UIWindow; RT64's CocoaWindow maps it.
+        std::fprintf(stderr, "[paperpad] window created: ui_window=%p\n",
+            wm_info.info.uikit.window);
+        void* ios_layer = SDL_Metal_GetLayer(SDL_Metal_CreateView(window));
+        ios_ui_window = wm_info.info.uikit.window;
+        ios_metal_layer = ios_layer;
+        paperpad_touch_attach(wm_info.info.uikit.window);
+        paperpad_log_window_diagnostics(wm_info.info.uikit.window, ios_layer);
+        // One-shot delayed diagnostics (post-swapchain-resize state).
+        void* diag_window = wm_info.info.uikit.window;
+        void* diag_layer = ios_layer;
+        std::thread([diag_window, diag_layer]() {
+            for (int i = 0; i < 5; ++i) {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                paperpad_log_window_diagnostics(diag_window, diag_layer);
+            }
+        }).detach();
+        return ultramodern::renderer::WindowHandle{ wm_info.info.uikit.window, ios_layer };
+#else
         SDL_MetalView view = SDL_Metal_CreateView(window);
         std::fprintf(stderr, "[paperpad] window created: ns_window=%p layer=%p\n",
             wm_info.info.cocoa.window, SDL_Metal_GetLayer(view));
         return ultramodern::renderer::WindowHandle{ wm_info.info.cocoa.window, SDL_Metal_GetLayer(view) };
+#endif
 #else
         return window;
 #endif
@@ -552,9 +587,19 @@ namespace {
         }
 
         // Touch overlay state from the Apple shell (iOS).
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        uint16_t touch_btns = 0;
+        float touch_x = 0.0f;
+        float touch_y = 0.0f;
+        paperpad_touch_snapshot(&touch_btns, &touch_x, &touch_y);
+        out_buttons |= touch_btns;
+        out_x += touch_x;
+        out_y += touch_y;
+#else
         out_buttons |= touch_buttons.load(std::memory_order_relaxed);
         out_x += touch_stick_x.load(std::memory_order_relaxed);
         out_y += touch_stick_y.load(std::memory_order_relaxed);
+#endif
 
         *buttons = out_buttons;
         *x = std::clamp(out_x, -1.0f, 1.0f);
@@ -628,6 +673,15 @@ namespace {
             return true;
         }
 
+        // iOS: the shell installs the validated ROM at <App Support>/baserom.z64
+        // and chdirs into that directory before calling the game entry.
+        const std::filesystem::path cwd_rom = std::filesystem::current_path() / "baserom.z64";
+        if (std::filesystem::exists(cwd_rom)) {
+            if (install_rom_from_path(cwd_rom, game_id)) {
+                return true;
+            }
+        }
+
         if (argc > 1 && install_rom_from_path(std::filesystem::path(argv[1]), game_id)) {
             return true;
         }
@@ -644,6 +698,7 @@ extern "C" void PaperPad_SetTouchButtons(uint16_t buttons) {
     touch_buttons.store(buttons, std::memory_order_relaxed);
 }
 
+
 extern "C" void PaperPad_SetTouchStick(float x, float y) {
     touch_stick_x.store(x, std::memory_order_relaxed);
     touch_stick_y.store(y, std::memory_order_relaxed);
@@ -655,7 +710,18 @@ extern "C" void PaperPad_ResetTouchInput(void) {
     touch_stick_y.store(0.0f, std::memory_order_relaxed);
 }
 
-int main(int argc, char** argv) {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+// iOS: the UIKit shell (SDL_main) calls this after ROM setup + chdir.
+extern "C" int paperpad_recomp_main(int argc, char** argv);
+#  define PAPERPAD_MAIN paperpad_recomp_main
+#else
+#  define PAPERPAD_MAIN main
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+extern "C"
+#endif
+int PAPERPAD_MAIN(int argc, char** argv) {
     setvbuf(stderr, nullptr, _IONBF, 0);
 #if defined(__APPLE__)
     // RT64's automatic API selection prefers D3D12; on Apple, Metal is the
