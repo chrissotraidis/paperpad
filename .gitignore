@@ -1,0 +1,14 @@
+# Local reference inputs and ROMs (never tracked)
+ref/
+
+# Generated AOT source from the user's ROM (never tracked)
+generated/
+
+# Build trees
+build-*/
+logs/
+artifacts/
+*.ipa
+
+# macOS cruft
+.DS_Store
