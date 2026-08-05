@@ -234,8 +234,6 @@ namespace {
             std::fprintf(stderr, "[paperpad] game loop frames: %llu\n",
                 (unsigned long long)game_loop_count);
         }
-        recomp::service_save_state_frame_boundary(rdram);
-
         if (original_step_game_loop != nullptr) {
             original_step_game_loop(rdram, ctx);
         }
@@ -573,7 +571,8 @@ namespace {
         return { ultramodern::input::Device::Controller, ultramodern::input::Pak::RumblePak };
     }
 
-    RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
+    RspUcodeFunc* get_rsp_microcode(uint8_t* rdram, const OSTask* task) {
+        (void)rdram;
         if (task->t.type == M_AUDTASK) {
             return n_aspMain;
         }

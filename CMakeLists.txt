@@ -17,10 +17,10 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
 endif()
 
 get_filename_component(PAPERPAD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
-set(PAPERPAD_RECUT_LIB "${PAPERPAD_ROOT}/ref/paper-mario-recut/lib")
 set(PM_RECOMP_OUT "${PAPERPAD_ROOT}/generated/aot/paper_mario_recomp_out")
 set(PM_GENERATED_RSP "${PAPERPAD_ROOT}/generated/aot/rsp/n_aspMain.cpp")
-set(PM_ROM_PATH "${PAPERPAD_ROOT}/generated/rom/baserom.z64")
+set(PAPERPAD_RUNTIME "${PAPERPAD_ROOT}/ref/mstan-n64modernruntime")
+set(PAPERPAD_RENDERER "${PAPERPAD_ROOT}/ref/mstan-rt64")
 
 if (NOT EXISTS "${PM_RECOMP_OUT}/lookup.cpp")
     message(FATAL_ERROR
@@ -32,44 +32,37 @@ endif()
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
+# ---- Renderer: RT64 (mstan fork with Apple Metal support) ----------------
 set(RT64_STATIC TRUE CACHE BOOL "Build RT64 as a static library" FORCE)
-if (WIN32)
-    set(RT64_SDL_WINDOW_VULKAN OFF CACHE BOOL "Use SDL windows for RT64 Vulkan" FORCE)
-    add_compile_definitions(HLSL_CPU)
-elseif (NOT APPLE)
-    # RT64 adds RT64_SDL_WINDOW_VULKAN itself only on Linux; on Apple the
-    # Metal RHI + struct RenderWindow path is selected and the SDL_VULKAN
-    # define must not leak into C++ (it would break the window typedef).
-    set(RT64_SDL_WINDOW_VULKAN TRUE CACHE BOOL "Use SDL windows for RT64 Vulkan" FORCE)
-    add_compile_definitions(HLSL_CPU)
-else()
+if (APPLE)
     set(RT64_SDL_WINDOW_VULKAN FALSE CACHE BOOL "Use SDL windows for RT64 Vulkan" FORCE)
-    add_compile_definitions(HLSL_CPU)
 endif()
+add_compile_definitions(HLSL_CPU)
+add_subdirectory("${PAPERPAD_RENDERER}" "${CMAKE_BINARY_DIR}/rt64")
 
-add_subdirectory("${PAPERPAD_RECUT_LIB}/rt64" "${CMAKE_BINARY_DIR}/rt64")
-add_subdirectory("${PAPERPAD_RECUT_LIB}/N64ModernRuntime" "${CMAKE_BINARY_DIR}/N64ModernRuntime")
+# ---- Runtime: N64ModernRuntime (mstan fork, static mobile profile) ---------
+set(N64MODERN_NO_DYNAMIC_CODE ON CACHE BOOL "Compile out runtime code generation" FORCE)
+set(WITH_ARES_BRIDGE OFF CACHE BOOL "" FORCE)
+set(RT64_BUILD_TOOLS ON CACHE BOOL "RT64 host tools" FORCE)
+add_subdirectory("${PAPERPAD_RUNTIME}" "${CMAKE_BINARY_DIR}/runtime")
 
-# Vendored fmt cannot use consteval format strings under Apple clang; the
-# fmt base.h guard (patches/n64recomp/fmt-consteval-guard.patch) honors this.
 if (TARGET fmt)
     target_compile_definitions(fmt PUBLIC FMT_USE_CONSTEVAL=0)
 endif()
 
+# ---- Recompiled game functions ---------------------------------------------
 add_library(RecompiledFuncs STATIC)
 file(GLOB PM_FUNC_SOURCES "${PM_RECOMP_OUT}/*.c" "${PM_RECOMP_OUT}/*.cpp")
 target_sources(RecompiledFuncs PRIVATE ${PM_FUNC_SOURCES})
 target_compile_options(RecompiledFuncs PRIVATE
-    $<$<C_COMPILER_ID:MSVC>:/bigobj>
-    $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
-    $<$<NOT:$<C_COMPILER_ID:MSVC>>:-fno-strict-aliasing -Wno-unused-variable -Wno-implicit-function-declaration>
+    -fno-strict-aliasing -Wno-unused-variable -Wno-implicit-function-declaration
 )
 target_include_directories(RecompiledFuncs PRIVATE
     "${PM_RECOMP_OUT}"
     "${PAPERPAD_ROOT}/src"
-    "${PAPERPAD_RECUT_LIB}/N64ModernRuntime/ultramodern/include"
-    "${PAPERPAD_RECUT_LIB}/N64ModernRuntime/librecomp/include"
-    "${PAPERPAD_RECUT_LIB}/N64ModernRuntime/N64Recomp/include"
+    "${PAPERPAD_RUNTIME}/ultramodern/include"
+    "${PAPERPAD_RUNTIME}/librecomp/include"
+    "${PAPERPAD_RUNTIME}/N64Recomp/include"
 )
 
 find_package(SDL2 REQUIRED)
@@ -81,13 +74,11 @@ add_executable(PaperPad
     src/paper_stubs.cpp
     src/register_overlays.cpp
     src/builtin_texture_pack.cpp
-    # Generated lookup table (provides get_entrypoint_address etc).
     "${PM_RECOMP_OUT}/lookup.cpp"
-    # Paper Mario's aspMain audio microcode, recompiled from the local ROM.
     "${PM_GENERATED_RSP}"
 )
 
-if (APPLE)
+if (APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set_target_properties(PaperPad PROPERTIES
         MACOSX_BUNDLE TRUE
         MACOSX_BUNDLE_BUNDLE_NAME "PaperPad"
@@ -99,14 +90,14 @@ endif()
 target_include_directories(PaperPad PRIVATE
     "${PAPERPAD_ROOT}/src"
     "${PM_RECOMP_OUT}"
-    "${PAPERPAD_RECUT_LIB}/N64ModernRuntime/ultramodern/include"
-    "${PAPERPAD_RECUT_LIB}/N64ModernRuntime/librecomp/include"
-    "${PAPERPAD_RECUT_LIB}/N64ModernRuntime/N64Recomp/include"
-    "${PAPERPAD_RECUT_LIB}/rt64/src/contrib"
-    "${PAPERPAD_RECUT_LIB}/rt64/src/contrib/hlslpp/include"
-    "${PAPERPAD_RECUT_LIB}/rt64/src"
-    "${PAPERPAD_RECUT_LIB}/rt64/src/rhi"
-    "${PAPERPAD_RECUT_LIB}/rt64/src/render"
+    "${PAPERPAD_RUNTIME}/ultramodern/include"
+    "${PAPERPAD_RUNTIME}/librecomp/include"
+    "${PAPERPAD_RUNTIME}/N64Recomp/include"
+    "${PAPERPAD_RENDERER}/src/contrib"
+    "${PAPERPAD_RENDERER}/src/contrib/hlslpp/include"
+    "${PAPERPAD_RENDERER}/src"
+    "${PAPERPAD_RENDERER}/src/rhi"
+    "${PAPERPAD_RENDERER}/src/render"
     "${CMAKE_BINARY_DIR}/rt64/src"
 )
 

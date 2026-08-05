@@ -63,6 +63,27 @@ extern "C" void osUnmapTLB_recomp(uint8_t*, recomp_context* ctx) {
     tlb_entries[index] = {};
 }
 
-extern "C" void osEPiWriteIo_recomp(uint8_t*, recomp_context* ctx) {
-    ctx->r2 = 0;
+
+
+// The mstan runtime's sp-task ring references PSR diagnostic counters;
+// PaperPad provides neutral stubs so the runtime links standalone.
+namespace pkmnstadium::dbg {
+    std::atomic<uint64_t> g_frame_count{0};
+    std::atomic<uint64_t> g_send_dl_count{0};
+}
+
+// mstan's RT64 interpreter carries PSR diagnostic hooks; neutral stubs keep
+// PaperPad standalone.
+extern "C" void pkmnstadium_gdl_walk_snapshot(uint32_t target_vaddr, uint32_t parent_vaddr, const uint8_t* head_ptr, uint64_t submit_seq) {
+    (void)target_vaddr; (void)parent_vaddr; (void)head_ptr; (void)submit_seq;
+}
+extern "C" const char* pkmnstadium_trace_at(uint64_t idx) { (void)idx; return nullptr; }
+extern "C" uint64_t pkmnstadium_trace_capacity() { return 0; }
+extern "C" uint32_t pkmnstadium_trace_write_idx() { return 0; }
+
+// AnnePad's runtime carries a PSR post-mortem hook; PaperPad keeps a neutral
+// stub that logs the reason.
+extern "C" void psr_post_mortem_dump(const char* reason, void* fault_info) {
+    fprintf(stderr, "[post-mortem] %s\n", reason ? reason : "unknown");
+    (void)fault_info;
 }
