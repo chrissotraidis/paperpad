@@ -305,11 +305,12 @@ namespace {
         flags |= SDL_WINDOW_METAL;
 #endif
 
-        window = SDL_CreateWindow("PaperPad", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 1280, 960, flags);
+        window = SDL_CreateWindow("PaperPad", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 960, 720, flags);
         if (window == nullptr) {
             show_message(SDL_GetError());
             std::exit(EXIT_FAILURE);
         }
+        SDL_ShowWindow(window);
 
         SDL_SysWMinfo wm_info;
         SDL_VERSION(&wm_info.version);
