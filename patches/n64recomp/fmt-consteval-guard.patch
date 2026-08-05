@@ -1,0 +1,21 @@
+diff --git a/lib/N64ModernRuntime/N64Recomp/lib/fmt/include/fmt/base.h b/lib/N64ModernRuntime/N64Recomp/lib/fmt/include/fmt/base.h
+index f6bbde7..0af75ab 100644
+--- a/lib/N64ModernRuntime/N64Recomp/lib/fmt/include/fmt/base.h
++++ b/lib/N64ModernRuntime/N64Recomp/lib/fmt/include/fmt/base.h
+@@ -109,6 +109,8 @@ import std;
+ #endif
+ 
+ // Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.
++#ifdef FMT_USE_CONSTEVAL
++#else
+ #if !defined(__cpp_lib_is_constant_evaluated)
+ #  define FMT_USE_CONSTEVAL 0
+ #elif FMT_CPLUSPLUS < 201709L
+@@ -128,6 +130,7 @@ import std;
+ #else
+ #  define FMT_USE_CONSTEVAL 0
+ #endif
++#endif
+ #if FMT_USE_CONSTEVAL
+ #  define FMT_CONSTEVAL consteval
+ #  define FMT_CONSTEXPR20 constexpr

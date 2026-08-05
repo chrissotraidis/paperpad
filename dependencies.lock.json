@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "updated": "2026-08-05",
+  "notes": [
+    "Paper Mario decomp and ReCut are exact upstream pins cloned into gitignored ref/.",
+    "N64ModernRuntime and RT64 are vendored inside the ReCut checkout at its pin.",
+    "Source checkouts are local build inputs; redistribution remains subject to RIGHTS_AND_LICENSES.md."
+  ],
+  "sources": {
+    "papermario": {
+      "url": "https://github.com/pmret/papermario.git",
+      "commit": "c61db66e3cce7e8fa5b53d3e9ecd01632e7b064a",
+      "provenance": "pmret decomp main"
+    },
+    "paperMarioReCut": {
+      "url": "https://github.com/SMCGames/Paper-Mario-ReCut.git",
+      "commit": "098be0a501eecd5bb894a47964061d05eeedc3a2",
+      "provenance": "SMCGames ReCut main; vendors N64ModernRuntime + rt64"
+    },
+    "spaghettipadReference": {
+      "url": "https://github.com/chrissotraidis/spaghettipad.git",
+      "commit": "4f6bb0c",
+      "provenance": "local Apple-port reference only"
+    }
+  },
+  "rom": {
+    "title": "Paper Mario (U) 1.0",
+    "normalizedByteOrder": "z64-big-endian",
+    "size": 41943040,
+    "sha1": "3837f44cda784b466c9a2d99df70d77c322b97a0",
+    "redistribution": "forbidden"
+  },
+  "decomp": {
+    "configureCpp": "cpp-16",
+    "notes": "Host GNU cpp required by the decomp configure step (macOS ships only clang cpp)."
+  }
+}

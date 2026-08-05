@@ -1,0 +1,48 @@
+diff --git a/lib/rt64/src/metal/rt64_metal.cpp b/lib/rt64/src/metal/rt64_metal.cpp
+--- a/lib/rt64/src/metal/rt64_metal.cpp
++++ b/lib/rt64/src/metal/rt64_metal.cpp
+@@ -2225,12 +2225,7 @@ namespace RT64 {
+         // Set pixel format for depth attachment if we have one, with write disabled
+         if (targetFramebuffer->depthAttachment != nullptr) {
+             pipelineDesc->setDepthAttachmentPixelFormat(targetFramebuffer->depthAttachment->mtl->pixelFormat());
+-            MTL::DepthStencilDescriptor *depthStencilDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
+-            depthStencilDescriptor->setDepthWriteEnabled(false);
+-            const MTL::DepthStencilState *depthStencilState = device->mtl->newDepthStencilState(depthStencilDescriptor);
+-            activeRenderEncoder->setDepthStencilState(depthStencilState);
+-
+-            depthStencilDescriptor->release();
++            activeRenderEncoder->setDepthStencilState(device->renderInterface->clearColorDepthStencilState);
+         }
+ 
+         const MTL::RenderPipelineState *pipelineState = device->renderInterface->getOrCreateClearRenderPipelineState(pipelineDesc);
+@@ -3137,6 +3132,8 @@ namespace RT64 {
+         clearVertexFunction->release();
+         clearColorFunction->release();
+         clearDepthFunction->release();
++        clearColorDepthStencilState->release();
++        clearDepthStencilState->release();
+         device->release();
+         reusableBlitDescriptor->release();
+     }
+@@ -3264,6 +3261,10 @@ namespace RT64 {
+ 
+         // Create depth stencil state
+         MTL::DepthStencilDescriptor *depthDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
++        depthDescriptor->setDepthWriteEnabled(false);
++        depthDescriptor->setDepthCompareFunction(MTL::CompareFunctionAlways);
++        clearColorDepthStencilState = device->newDepthStencilState(depthDescriptor);
++
+         depthDescriptor->setDepthWriteEnabled(true);
+         depthDescriptor->setDepthCompareFunction(MTL::CompareFunctionAlways);
+         clearDepthStencilState = device->newDepthStencilState(depthDescriptor);
+diff --git a/lib/rt64/src/metal/rt64_metal.h b/lib/rt64/src/metal/rt64_metal.h
+--- a/lib/rt64/src/metal/rt64_metal.h
++++ b/lib/rt64/src/metal/rt64_metal.h
+@@ -597,6 +597,7 @@ namespace RT64 {
+         MTL::Function* clearVertexFunction;
+         MTL::Function* clearColorFunction;
+         MTL::Function* clearDepthFunction;
++        MTL::DepthStencilState *clearColorDepthStencilState;
+         MTL::DepthStencilState *clearDepthStencilState;
+ 
+         std::mutex clearPipelineStateMutex;

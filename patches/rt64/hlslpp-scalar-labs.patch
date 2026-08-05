@@ -1,0 +1,12 @@
+diff --git a/lib/rt64/src/contrib/hlslpp/include/hlsl++/platforms/scalar.h b/lib/rt64/src/contrib/hlslpp/include/hlsl++/platforms/scalar.h
+index f2db5ee..4293ef0 100644
+--- a/lib/rt64/src/contrib/hlslpp/include/hlsl++/platforms/scalar.h
++++ b/lib/rt64/src/contrib/hlslpp/include/hlsl++/platforms/scalar.h
+@@ -2,6 +2,7 @@
+ 
+ #include <math.h>
+ #include <stdint.h>
++#include <stdlib.h>
+ 
+ namespace hlslpp
+ {

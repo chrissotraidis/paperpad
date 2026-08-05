@@ -1,0 +1,12 @@
+# Paper Mario (US 1.0) N64Recomp generation config.
+# Paths are relative to this file. The ELF and ROM are local build inputs.
+
+[input]
+entrypoint = 0x80025C00
+elf_path = "../../ref/papermario/ver/us/build/papermario.elf"
+rom_file_path = "../../generated/rom/baserom.z64"
+output_func_path = "../../generated/aot/paper_mario_recomp_out"
+recomp_include = '#include "librecomp/recomp.h"'
+unpaired_lo16_warnings = false
+
+[patches]

@@ -1,0 +1,245 @@
+diff --git a/lib/rt64/src/metal/rt64_metal.cpp b/lib/rt64/src/metal/rt64_metal.cpp
+--- a/lib/rt64/src/metal/rt64_metal.cpp
++++ b/lib/rt64/src/metal/rt64_metal.cpp
+@@ -1533,36 +1533,26 @@ namespace RT64 {
+         const auto &setLayoutBinding = setLayout->setBindings[indexBase];
+         const MTL::DataType dtype = mapDataType(setLayoutBinding.descriptorType);
+         MTL::Resource *nativeResource = nullptr;
++        MTL::SamplerState *nativeSampler = nullptr;
++        uint32_t nativeOffset = 0;
+         RenderDescriptorRangeType descriptorType = getDescriptorType(bindingIndex);
+ 
+-        if (dtype != MTL::DataTypeSampler) {
+-            if (resourceEntries[descriptorIndex].resource != nullptr) {
+-                resourceEntries[descriptorIndex].resource->release();
+-                resourceEntries[descriptorIndex].resource = nullptr;
+-            }
+-        }
+-
+         if (descriptor != nullptr) {
+             switch (dtype) {
+                 case MTL::DataTypeTexture: {
+                     const TextureDescriptor *textureDescriptor = static_cast<const TextureDescriptor *>(descriptor);
+                     nativeResource = textureDescriptor->texture;
+-                    MTL::Texture *nativeTexture = static_cast<MTL::Texture *>(nativeResource);
+-                    argumentBuffer.argumentEncoder->setTexture(nativeTexture, descriptorIndex - indexBase + bindingIndex);
+-                    nativeTexture->retain();
+                     break;
+                 }
+                 case MTL::DataTypePointer: {
+                     const BufferDescriptor *bufferDescriptor = static_cast<const BufferDescriptor *>(descriptor);
+                     nativeResource = bufferDescriptor->buffer;
+-                    MTL::Buffer *nativeBuffer = static_cast<MTL::Buffer *>(nativeResource);
+-                    argumentBuffer.argumentEncoder->setBuffer(nativeBuffer, bufferDescriptor->offset, descriptorIndex - indexBase + bindingIndex);
+-                    nativeBuffer->retain();
++                    nativeOffset = bufferDescriptor->offset;
+                     break;
+                 }
+                 case MTL::DataTypeSampler: {
+                     const SamplerDescriptor *samplerDescriptor = static_cast<const SamplerDescriptor *>(descriptor);
+-                    argumentBuffer.argumentEncoder->setSamplerState(samplerDescriptor->state, descriptorIndex - indexBase + bindingIndex);
++                    nativeSampler = samplerDescriptor->state;
+                     break;
+                 }
+                     
+@@ -1570,13 +1560,110 @@ namespace RT64 {
+                     assert(false && "Unsupported descriptor type.");
+             }
+         }
+-        
+-        if (argumentBuffer.mtl->storageMode() == MTL::StorageModeManaged) {
+-            argumentBuffer.mtl->didModifyRange(NS::Range(argumentBuffer.offset, argumentBuffer.mtl->length() - argumentBuffer.offset));
++
++        ResourceEntry &entry = resourceEntries[descriptorIndex];
++        if ((entry.resource == nativeResource) && (entry.sampler == nativeSampler) &&
++            (entry.offset == nativeOffset) && (entry.type == descriptorType)) {
++            return;
++        }
++
++        const bool resourceChanged = entry.resource != nativeResource;
++        if (resourceChanged && (entry.resource != nullptr)) {
++            entry.resource->release();
++        }
++
++        if (resourceChanged && (nativeResource != nullptr)) {
++            nativeResource->retain();
++        }
++
++        entry.resource = nativeResource;
++        entry.sampler = nativeSampler;
++        entry.offset = nativeOffset;
++        entry.type = descriptorType;
++        entry.dirty = true;
++        hasPendingDescriptors = true;
++    }
++
++    void MetalDescriptorSet::flushPendingDescriptors() {
++        if (!hasPendingDescriptors) {
++            return;
++        }
++
++        bool modified = false;
++        uint32_t descriptorIndex = 0;
++
++        while (descriptorIndex < resourceEntries.size()) {
++            if (!resourceEntries[descriptorIndex].dirty) {
++                descriptorIndex++;
++                continue;
++            }
++
++            const uint32_t indexBase = setLayout->descriptorIndexBases[descriptorIndex];
++            const uint32_t bindingIndex = setLayout->descriptorBindingIndices[descriptorIndex];
++            const MTL::DataType dtype = mapDataType(setLayout->setBindings[indexBase].descriptorType);
++            const uint32_t argumentIndex = descriptorIndex - indexBase + bindingIndex;
++
++            uint32_t endIndex = descriptorIndex + 1;
++            uint32_t previousArgumentIndex = argumentIndex;
++            while (endIndex < resourceEntries.size() && resourceEntries[endIndex].dirty) {
++                const uint32_t nextIndexBase = setLayout->descriptorIndexBases[endIndex];
++                const uint32_t nextBindingIndex = setLayout->descriptorBindingIndices[endIndex];
++                const MTL::DataType nextType = mapDataType(setLayout->setBindings[nextIndexBase].descriptorType);
++                const uint32_t nextArgumentIndex = endIndex - nextIndexBase + nextBindingIndex;
++                if ((nextType != dtype) || (nextArgumentIndex != previousArgumentIndex + 1)) {
++                    break;
++                }
++
++                previousArgumentIndex = nextArgumentIndex;
++                endIndex++;
++            }
++
++            const uint32_t count = endIndex - descriptorIndex;
++            const NS::Range range(argumentIndex, count);
++            switch (dtype) {
++                case MTL::DataTypeTexture: {
++                    std::vector<MTL::Texture *> textures(count);
++                    for (uint32_t i = 0; i < count; i++) {
++                        textures[i] = static_cast<MTL::Texture *>(resourceEntries[descriptorIndex + i].resource);
++                    }
++                    argumentBuffer.argumentEncoder->setTextures(textures.data(), range);
++                    break;
++                }
++                case MTL::DataTypePointer: {
++                    std::vector<MTL::Buffer *> buffers(count);
++                    std::vector<NS::UInteger> offsets(count);
++                    for (uint32_t i = 0; i < count; i++) {
++                        const ResourceEntry &entry = resourceEntries[descriptorIndex + i];
++                        buffers[i] = static_cast<MTL::Buffer *>(entry.resource);
++                        offsets[i] = entry.offset;
++                    }
++                    argumentBuffer.argumentEncoder->setBuffers(buffers.data(), offsets.data(), range);
++                    break;
++                }
++                case MTL::DataTypeSampler: {
++                    std::vector<MTL::SamplerState *> samplers(count);
++                    for (uint32_t i = 0; i < count; i++) {
++                        samplers[i] = resourceEntries[descriptorIndex + i].sampler;
++                    }
++                    argumentBuffer.argumentEncoder->setSamplerStates(samplers.data(), range);
++                    break;
++                }
++                default:
++                    assert(false && "Unsupported descriptor type.");
++            }
++
++            for (uint32_t i = descriptorIndex; i < endIndex; i++) {
++                resourceEntries[i].dirty = false;
++            }
++
++            modified = true;
++            descriptorIndex = endIndex;
+         }
+ 
+-        resourceEntries[descriptorIndex].resource = nativeResource;
+-        resourceEntries[descriptorIndex].type = descriptorType;
++        hasPendingDescriptors = false;
++        if (modified && (argumentBuffer.mtl->storageMode() == MTL::StorageModeManaged)) {
++            argumentBuffer.mtl->didModifyRange(NS::Range(argumentBuffer.offset, argumentBuffer.mtl->length() - argumentBuffer.offset));
++        }
+     }
+ 
+     RenderDescriptorRangeType MetalDescriptorSet::getDescriptorType(const uint32_t binding) const {
+@@ -2578,6 +2665,12 @@ namespace RT64 {
+     }
+ 
+     void MetalCommandList::checkActiveComputeEncoder() {
++        for (MetalDescriptorSet *descriptorSet : computeDescriptorSets) {
++            if (descriptorSet != nullptr) {
++                descriptorSet->flushPendingDescriptors();
++            }
++        }
++
+         endOtherEncoders(EncoderType::Compute);
+         activeType = EncoderType::Compute;
+ 
+@@ -2670,6 +2763,12 @@ namespace RT64 {
+     }
+ 
+     void MetalCommandList::checkForUpdatesInGraphicsState() {
++        for (MetalDescriptorSet *descriptorSet : renderDescriptorSets) {
++            if (descriptorSet != nullptr) {
++                descriptorSet->flushPendingDescriptors();
++            }
++        }
++
+         if (dirtyGraphicsState.pipelineState) {
+             if (activeRenderState) {
+                 activeRenderEncoder->setRenderPipelineState(activeRenderState->renderPipelineState);
+@@ -2927,7 +3026,7 @@ namespace RT64 {
+ 
+     MetalPipelineLayout::~MetalPipelineLayout() {}
+ 
+-    void MetalPipelineLayout::bindDescriptorSets(MTL::CommandEncoder* encoder, const MetalDescriptorSet* const* descriptorSets, uint32_t descriptorSetCount, bool isCompute, uint32_t startIndex, std::unordered_set<MetalDescriptorSet*>& encoderDescriptorSets) const {
++    void MetalPipelineLayout::bindDescriptorSets(MTL::CommandEncoder* encoder, MetalDescriptorSet* const* descriptorSets, uint32_t descriptorSetCount, bool isCompute, uint32_t startIndex, std::unordered_set<MetalDescriptorSet*>& encoderDescriptorSets) const {
+         for (uint32_t i = startIndex; i < setLayoutCount; i++) {
+             if (i >= descriptorSetCount || descriptorSets[i] == nullptr) {
+                 continue;
+diff --git a/lib/rt64/src/metal/rt64_metal.h b/lib/rt64/src/metal/rt64_metal.h
+--- a/lib/rt64/src/metal/rt64_metal.h
++++ b/lib/rt64/src/metal/rt64_metal.h
+@@ -166,7 +166,10 @@ namespace RT64 {
+     struct MetalDescriptorSet : RenderDescriptorSet {
+         struct ResourceEntry {
+             MTL::Resource* resource = nullptr;
++            MTL::SamplerState* sampler = nullptr;
++            uint32_t offset = 0;
+             RenderDescriptorRangeType type = RenderDescriptorRangeType::UNKNOWN;
++            bool dirty = false;
+         };
+ 
+         MetalDevice *device = nullptr;
+@@ -176,6 +179,7 @@ namespace RT64 {
+         MetalArgumentBuffer argumentBuffer;
+ 
+         std::vector<ResourceEntry> resourceEntries;
++        bool hasPendingDescriptors = false;
+ 
+         MetalDescriptorSet(MetalDevice *device, const RenderDescriptorSetDesc &desc);
+         MetalDescriptorSet(MetalDevice *device, uint32_t entryCount);
+@@ -186,6 +190,7 @@ namespace RT64 {
+         void setAccelerationStructure(uint32_t descriptorIndex, const RenderAccelerationStructure *accelerationStructure) override;
+ 
+         void setDescriptor(uint32_t descriptorIndex, const Descriptor *descriptor);
++        void flushPendingDescriptors();
+         void bindImmutableSamplers() const;
+         RenderDescriptorRangeType getDescriptorType(uint32_t binding) const;
+     };
+@@ -328,8 +333,8 @@ namespace RT64 {
+         const MetalRenderState *activeRenderState = nullptr;
+         const MetalComputeState *activeComputeState = nullptr;
+ 
+-        const MetalDescriptorSet* renderDescriptorSets[DESCRIPTOR_SET_MAX_INDEX + 1] = {};
+-        const MetalDescriptorSet* computeDescriptorSets[DESCRIPTOR_SET_MAX_INDEX + 1] = {};
++        MetalDescriptorSet* renderDescriptorSets[DESCRIPTOR_SET_MAX_INDEX + 1] = {};
++        MetalDescriptorSet* computeDescriptorSets[DESCRIPTOR_SET_MAX_INDEX + 1] = {};
+         
+         std::unordered_set<MetalDescriptorSet*> currentEncoderDescriptorSets;
+         void bindEncoderResources(MTL::CommandEncoder* encoder, bool isCompute);
+@@ -548,7 +553,7 @@ namespace RT64 {
+         MetalPipelineLayout(MetalDevice *device, const RenderPipelineLayoutDesc &desc);
+         ~MetalPipelineLayout() override;
+ 
+-        void bindDescriptorSets(MTL::CommandEncoder* encoder, const MetalDescriptorSet* const* descriptorSets, uint32_t descriptorSetCount, bool isCompute, uint32_t startIndex, std::unordered_set<MetalDescriptorSet*>& encoderDescriptorSets) const;
++        void bindDescriptorSets(MTL::CommandEncoder* encoder, MetalDescriptorSet* const* descriptorSets, uint32_t descriptorSetCount, bool isCompute, uint32_t startIndex, std::unordered_set<MetalDescriptorSet*>& encoderDescriptorSets) const;
+     };
+ 
+     struct MetalDevice : RenderDevice {
