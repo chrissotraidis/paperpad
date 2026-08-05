@@ -3,6 +3,26 @@
 Work in progress; each phase is filled in as it is proven on this machine.
 `STATUS.md` is authoritative about which phases pass.
 
+## GitHub push limits (learned 2026-08-05)
+
+The configured remote (`https://github.com/chrissotraidis/paperpad.git`)
+rejects any single push whose received pack exceeds roughly 1 MB: the
+connection drops with `HTTP 400` / "unexpected disconnect while reading
+sideband packet" and no server message. Verified empirically:
+
+- Pushes with a sent pack under ~0.9 MB succeed; packs over ~1.2 MB fail
+  consistently, even when every individual file is small and no secrets are
+  present.
+- Workaround used for the initial push: fast-forward `main` in small
+  increments (one logical commit per push, each adding < 1 MB of new objects).
+  This is why the iOS work is split across several commits.
+- Keep committed binary assets small: the AppIcon was compressed from
+  1,022,360 to 663,358 bytes with Xcode's `pngcrush -reduce -brute`, and
+  evidence screenshots are cropped to the game window and downscaled
+  (~360-400 KB each).
+- When adding evidence images, prefer small crops/thumbnails and push in
+  small increments.
+
 ## Prerequisites
 
 - Apple Silicon Mac, macOS 26.x (this checkout: 26.5.2).
