@@ -5,6 +5,7 @@ ref/
 generated/
 
 # Build trees
+build/
 build-*/
 logs/
 artifacts/
