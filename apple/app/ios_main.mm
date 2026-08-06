@@ -13,12 +13,21 @@
 
 #include "rom_setup.h"
 #include "touch_tap_latch.h"
+#include "paperpad_input.h"
 
 extern "C" int paperpad_recomp_main(int argc, char** argv);
+
+@class PaperPadTouchOverlayView;
+@class PaperPadSettingsViewController;
+
+@interface PaperPadSettingsViewController : UIViewController
+- (void)refreshFromDefaults;
+@end
 
 namespace {
 
 std::atomic<uint16_t> g_touch_buttons{0};
+static PaperPadTouchOverlayView* g_touch_overlay = nullptr;
 PaperPadTouchTapLatch g_touch_taps;
 std::atomic<int32_t> g_touch_x{0};
 std::atomic<int32_t> g_touch_y{0};
@@ -400,24 +409,21 @@ NSString* layoutDefaultsKey() {
         [UIAlertController alertControllerWithTitle:@"PaperPad"
                                             message:nil
                                      preferredStyle:UIAlertControllerStyleActionSheet];
-    PaperPadTouchOverlayView* overlay = self;
-    [menu addAction:[UIAlertAction actionWithTitle:@"Manage Game ROM"
+    [menu addAction:[UIAlertAction actionWithTitle:@"Settings"
                                              style:UIAlertActionStyleDefault
                                            handler:^(__unused UIAlertAction* action) {
-        // Let the action sheet finish dismissing before presenting the ROM
-        // manager. UIKit drops a second presentation during the first one's
-        // animated teardown.
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.75 * NSEC_PER_SEC)),
                        dispatch_get_main_queue(), ^{
-            paperpad_present_rom_manager((__bridge void*)overlay.window.rootViewController);
+            PaperPadSettingsViewController* settings = [PaperPadSettingsViewController new];
+            settings.modalPresentationStyle = UIModalPresentationFormSheet;
+            UIViewController* presenter = self.window.rootViewController;
+            while (presenter.presentedViewController != nil) {
+                presenter = presenter.presentedViewController;
+            }
+            if (presenter != nil) {
+                [presenter presentViewController:settings animated:YES completion:nil];
+            }
         });
-    }]];
-    [menu addAction:[UIAlertAction actionWithTitle:@"Edit Touch Layout"
-                                             style:UIAlertActionStyleDefault
-                                           handler:^(__unused UIAlertAction* action) {
-        overlay->_editing = YES;
-        [overlay clearInput];
-        [overlay setNeedsDisplay];
     }]];
     [menu addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                              style:UIAlertActionStyleCancel
@@ -429,6 +435,21 @@ NSString* layoutDefaultsKey() {
         popover.permittedArrowDirections = UIPopoverArrowDirectionUp;
     }
     [presenter presentViewController:menu animated:YES completion:nil];
+}
+
+- (void)beginEditingLayout {
+    _editing = YES;
+    [self clearInput];
+    [self setNeedsDisplay];
+}
+
+- (void)resetLayout {
+    _undoControls = _controls;
+    _controls = defaultControls();
+    _hasUndo = YES;
+    _editing = NO;
+    [self saveLayout];
+    [self setNeedsDisplay];
 }
 
 - (BOOL)handleToolbarPoint:(CGPoint)point {
@@ -622,6 +643,7 @@ extern "C" void paperpad_touch_attach(void* window_pointer) {
         }
         PaperPadTouchOverlayView* overlay =
             [[PaperPadTouchOverlayView alloc] initWithFrame:host.bounds];
+        g_touch_overlay = overlay;
         overlay.translatesAutoresizingMaskIntoConstraints = NO;
         [host addSubview:overlay];
         [NSLayoutConstraint activateConstraints:@[
@@ -642,6 +664,187 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     if (y != nullptr) *y = g_touch_y.load(std::memory_order_relaxed) / 10000.0F;
 }
 
+// ---------------------------------------------------------------------------
+// Settings sheet. Native, compact, persisted to NSUserDefaults and applied
+// through the PaperPad C bridge (volume + graphics config) or the touch
+// overlay (layout editing/reset).
+// ---------------------------------------------------------------------------
+
+static NSString* settingsDefaultsKey() {
+    return @"paperpad.settings.v1";
+}
+
+@implementation PaperPadSettingsViewController {
+    UISlider* _volumeSlider;
+    UILabel* _volumeLabel;
+    UISegmentedControl* _resolutionControl;
+    UISegmentedControl* _aspectControl;
+}
+
+- (void)loadView {
+    self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    self.view.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
+    self.preferredContentSize = CGSizeMake(560, 470);
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    CGFloat margin = 28.0;
+    CGFloat y = 36.0;
+    CGFloat width = self.view.bounds.size.width - margin * 2.0;
+    if (width > 560.0) width = 560.0;
+
+    UILabel* title = [[UILabel alloc] initWithFrame:CGRectMake(margin, y - 12.0, width, 34.0)];
+    title.text = @"PaperPad Settings";
+    title.font = [UIFont boldSystemFontOfSize:24.0];
+    title.textColor = UIColor.whiteColor;
+    [self.view addSubview:title];
+    y += 44.0;
+
+    // Master volume.
+    UILabel* volumeTitle = [self label:@"Master Volume"];
+    volumeTitle.frame = CGRectMake(margin, y, width * 0.5, 22.0);
+    [self.view addSubview:volumeTitle];
+    _volumeLabel = [self label:@"100%"];
+    _volumeLabel.textAlignment = NSTextAlignmentRight;
+    _volumeLabel.frame = CGRectMake(margin + width * 0.5, y, width * 0.5, 22.0);
+    [self.view addSubview:_volumeLabel];
+    y += 30.0;
+    _volumeSlider = [[UISlider alloc] initWithFrame:CGRectMake(margin, y, width, 34.0)];
+    _volumeSlider.minimumValue = 0.0;
+    _volumeSlider.maximumValue = 100.0;
+    _volumeSlider.continuous = YES;
+    [_volumeSlider addTarget:self action:@selector(volumeChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:_volumeSlider];
+    y += 50.0;
+
+    // Resolution.
+    UILabel* resTitle = [self label:@"Resolution"];
+    resTitle.frame = CGRectMake(margin, y, width * 0.5, 22.0);
+    [self.view addSubview:resTitle];
+    y += 30.0;
+    _resolutionControl = [[UISegmentedControl alloc] initWithItems:@[@"Auto", @"2x"]];
+    _resolutionControl.frame = CGRectMake(margin, y, width, 34.0);
+    [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:_resolutionControl];
+    y += 50.0;
+
+    // Aspect ratio.
+    UILabel* aspectTitle = [self label:@"Aspect Ratio"];
+    aspectTitle.frame = CGRectMake(margin, y, width, 22.0);
+    [self.view addSubview:aspectTitle];
+    y += 30.0;
+    _aspectControl = [[UISegmentedControl alloc] initWithItems:@[@"Original (4:3)", @"Expand"]];
+    _aspectControl.frame = CGRectMake(margin, y, width, 34.0);
+    [_aspectControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
+    [self.view addSubview:_aspectControl];
+    y += 58.0;
+
+    // Actions.
+    [self addActionButton:@"Edit Touch Layout" atY:y action:@selector(editLayoutPressed)];
+    y += 46.0;
+    [self addActionButton:@"Reset Touch Layout" atY:y action:@selector(resetLayoutPressed)];
+    y += 46.0;
+    [self addActionButton:@"Manage Game ROM" atY:y action:@selector(romPressed)];
+    y += 46.0;
+
+    UIButton* done = [UIButton buttonWithType:UIButtonTypeSystem];
+    done.frame = CGRectMake(margin, y + 4.0, width, 44.0);
+    [done setTitle:@"Done" forState:UIControlStateNormal];
+    done.titleLabel.font = [UIFont boldSystemFontOfSize:19.0];
+    [done setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
+    [done addTarget:self action:@selector(donePressed) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:done];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [self refreshFromDefaults];
+}
+
+- (UILabel*)label:(NSString*)text {
+    UILabel* label = [[UILabel alloc] init];
+    label.text = text;
+    label.font = [UIFont systemFontOfSize:17.0];
+    label.textColor = UIColor.whiteColor;
+    return label;
+}
+
+- (void)addActionButton:(NSString*)title atY:(CGFloat)y action:(SEL)action {
+    UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
+    CGFloat margin = 28.0;
+    CGFloat width = self.view.bounds.size.width - margin * 2.0;
+    if (width > 560.0) width = 560.0;
+    button.frame = CGRectMake(margin, y, width, 40.0);
+    [button setTitle:title forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:17.0];
+    [button setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
+    button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:button];
+}
+
+- (void)refreshFromDefaults {
+    NSDictionary* saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()];
+    float volume = saved[@"volume"] ? [saved[@"volume"] floatValue] : 1.0f;
+    int resolution = saved[@"resolution"] ? [saved[@"resolution"] intValue] : 0;
+    int aspect = saved[@"aspect"] ? [saved[@"aspect"] intValue] : 0;
+    _volumeSlider.value = volume * 100.0;
+    _volumeLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(volume * 100.0)];
+    _resolutionControl.selectedSegmentIndex = resolution;
+    _aspectControl.selectedSegmentIndex = aspect;
+}
+
+- (void)persist {
+    NSDictionary* saved = @{
+        @"volume": @(_volumeSlider.value / 100.0),
+        @"resolution": @(_resolutionControl.selectedSegmentIndex),
+        @"aspect": @(_aspectControl.selectedSegmentIndex),
+    };
+    [NSUserDefaults.standardUserDefaults setObject:saved forKey:settingsDefaultsKey()];
+}
+
+- (void)volumeChanged:(UISlider*)slider {
+    float volume = slider.value / 100.0;
+    _volumeLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(volume * 100.0)];
+    PaperPad_SetAudioVolume(volume);
+    [self persist];
+}
+
+- (void)graphicsChanged:(UISegmentedControl*)control {
+    PaperPad_SetGraphicsConfig((int)_resolutionControl.selectedSegmentIndex,
+                               (int)_aspectControl.selectedSegmentIndex);
+    [self persist];
+}
+
+- (void)editLayoutPressed {
+    [self dismissViewControllerAnimated:YES completion:^{
+        [g_touch_overlay beginEditingLayout];
+    }];
+}
+
+- (void)resetLayoutPressed {
+    [self dismissViewControllerAnimated:YES completion:^{
+        [g_touch_overlay resetLayout];
+    }];
+}
+
+- (void)romPressed {
+    UIViewController* presenter = self.presentingViewController;
+    [self dismissViewControllerAnimated:YES completion:^{
+        if (presenter != nil) {
+            paperpad_present_rom_manager((__bridge void*)presenter);
+        }
+    }];
+}
+
+- (void)donePressed {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+@end
+
 extern "C" int SDL_main(int argc, char** argv) {
     @autoreleasepool {
         SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
@@ -649,6 +852,16 @@ extern "C" int SDL_main(int argc, char** argv) {
 #if !defined(PAPERPAD_RELEASE_BUILD)
         setenv("PSR_AUTOBOOT", "1", 1);
 #endif
+
+        // Apply persisted settings before the game starts.
+        NSDictionary* settings = [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()];
+        if (settings != nil) {
+            float volume = settings[@"volume"] ? [settings[@"volume"] floatValue] : 1.0f;
+            int resolution = settings[@"resolution"] ? [settings[@"resolution"] intValue] : 0;
+            int aspect = settings[@"aspect"] ? [settings[@"aspect"] intValue] : 0;
+            PaperPad_SetAudioVolume(volume);
+            PaperPad_SetGraphicsConfig(resolution, aspect);
+        }
 
         NSFileManager* files = [NSFileManager defaultManager];
         NSURL* support = [[files URLsForDirectory:NSApplicationSupportDirectory

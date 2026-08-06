@@ -10,6 +10,8 @@ extern "C" {
 void PaperPad_SetTouchButtons(uint16_t buttons);
 void PaperPad_SetTouchStick(float x, float y);
 void PaperPad_ResetTouchInput(void);
+void PaperPad_SetAudioVolume(float volume);
+void PaperPad_SetGraphicsConfig(int resolution_mode, int aspect_mode);
 
 #ifdef __cplusplus
 }

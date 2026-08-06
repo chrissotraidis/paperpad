@@ -334,6 +334,12 @@ namespace {
                 res ? res->swapChainHeight : 0u,
                 res ? (double)res->resolutionScale.x : 0.0,
                 res ? (double)res->resolutionScale.y : 0.0);
+            std::fprintf(stderr,
+                "[render] userConfig.resolution=%d aspect=%d appUserConfig.resolution=%d multiplier=%.2f\n",
+                res ? (int)res->userConfig.resolution : -1,
+                res ? (int)res->userConfig.aspectRatio : -1,
+                (int)app->userConfig.resolution,
+                (double)app->userConfig.resolutionMultiplier);
             RT64::VI vi = app->core.decodeVI();
             hlslpp::uint2 fb = vi.fbSize();
             std::fprintf(stderr,

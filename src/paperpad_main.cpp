@@ -108,6 +108,8 @@ namespace {
     std::atomic<uint16_t> touch_buttons{0};
     std::atomic<float> touch_stick_x{0.0f};
     std::atomic<float> touch_stick_y{0.0f};
+    std::atomic<float> audio_volume{1.0f};
+    std::atomic<bool> graphics_settings_applied{false};
 
     enum class InputAction : int {
         N64A,
@@ -514,6 +516,15 @@ namespace {
         }
 
         if (queue_bytes != 0) {
+            // Apply the master volume gain to the float PCM before queueing.
+            const float gain = audio_volume.load(std::memory_order_relaxed);
+            if (gain < 1.0f) {
+                uint32_t sample_words = queue_bytes / sizeof(float);
+                float* samples = static_cast<float*>(samples_to_queue);
+                for (uint32_t i = 0; i < sample_words; i++) {
+                    samples[i] *= gain;
+                }
+            }
             SDL_QueueAudio(audio_device, samples_to_queue, queue_bytes);
         }
     }
@@ -737,6 +748,28 @@ extern "C" void PaperPad_ResetTouchInput(void) {
     touch_stick_y.store(0.0f, std::memory_order_relaxed);
 }
 
+// Master audio volume, 0.0 .. 1.0. Applied as a gain on the float PCM in the
+// audio thread before SDL_QueueAudio.
+extern "C" void PaperPad_SetAudioVolume(float volume) {
+    audio_volume.store(std::clamp(volume, 0.0f, 1.0f), std::memory_order_relaxed);
+}
+
+// Graphics settings from the iOS settings sheet.
+//   resolution_mode: 0 = Auto (scale to window), 1 = 2x fixed
+//   aspect_mode:     0 = Original (4:3 letterbox), 1 = Expand (fill window)
+// Persisted by the shell; applied here via the runtime's graphics config.
+extern "C" void PaperPad_SetGraphicsConfig(int resolution_mode, int aspect_mode) {
+    graphics_settings_applied.store(true, std::memory_order_relaxed);
+    auto config = ultramodern::renderer::get_graphics_config();
+    config.res_option = resolution_mode == 1
+        ? ultramodern::renderer::Resolution::Original2x
+        : ultramodern::renderer::Resolution::Auto;
+    config.ar_option = aspect_mode == 1
+        ? ultramodern::renderer::AspectRatio::Expand
+        : ultramodern::renderer::AspectRatio::Original;
+    ultramodern::renderer::set_graphics_config(config);
+}
+
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 // iOS: the UIKit shell (SDL_main) calls this after ROM setup + chdir.
 extern "C" int paperpad_recomp_main(int argc, char** argv);
@@ -855,6 +888,12 @@ int PAPERPAD_MAIN(int argc, char** argv) {
     // RT64's automatic API selection prefers D3D12; on Apple, Metal is the
     // supported RHI and must be selected explicitly.
     auto graphics_config = ultramodern::renderer::get_graphics_config();
+    // Default to scale-to-window resolution (crisp upscale) unless the iOS
+    // settings sheet already applied a saved preference.
+    if (!graphics_settings_applied.load(std::memory_order_relaxed)) {
+        graphics_config.res_option = ultramodern::renderer::Resolution::Auto;
+        graphics_config.ar_option = ultramodern::renderer::AspectRatio::Original;
+    }
     graphics_config.api_option = ultramodern::renderer::GraphicsApi::Metal;
     ultramodern::renderer::set_graphics_config(graphics_config);
 #endif
