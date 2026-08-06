@@ -23,12 +23,18 @@ void paperpad_log_window_diagnostics(void* ui_window, void* metal_layer) {
     UIWindow* window = (__bridge UIWindow*)ui_window;
     UIScreen* screen = window.screen ?: [UIScreen mainScreen];
     CGRect bounds = window.bounds;
+    CGRect screenBounds = screen.bounds;
+    CGSize screenMode = screen.currentMode.size;
+    CGSize screenNative = screen.nativeBounds.size;
     CAMetalLayer* layer = (__bridge CAMetalLayer*)metal_layer;
     CGSize drawable = layer.drawableSize;
     std::fprintf(stderr,
         "[paperpad] diag: ui_window=%p bounds=%.0fx%.0f scale=%.2f nativeScale=%.2f "
+        "screen=%.0fx%.0f mode=%.0fx%.0f native=%.0fx%.0f "
         "layer=%p drawable=%.0fx%.0f layerBounds=%.0fx%.0f layerContentsScale=%.2f\n",
         window, bounds.size.width, bounds.size.height, screen.scale, screen.nativeScale,
+        screenBounds.size.width, screenBounds.size.height,
+        screenMode.width, screenMode.height, screenNative.width, screenNative.height,
         layer, drawable.width, drawable.height, layer.bounds.size.width,
         layer.bounds.size.height, layer.contentsScale);
 }

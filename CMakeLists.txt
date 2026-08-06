@@ -118,7 +118,10 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
         XCODE_ATTRIBUTE_CODE_SIGN_STYLE Automatic
         XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${DEVELOPMENT_TEAM}"
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.chrissotraidis.paperpad"
-        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon"
+        # iPhone + iPad (native iPad layout, not the iPhone compatibility
+        # window that UIDeviceFamily=[1] would force on iPadOS).
+        XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2")
 elseif (APPLE)
     set_target_properties(PaperPad PROPERTIES
         MACOSX_BUNDLE TRUE
