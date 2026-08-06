@@ -254,7 +254,9 @@ NSString* layoutDefaultsKey() {
 
 - (CGRect)utilityButtonRect {
     CGRect usable = [self usableBounds];
-    return CGRectMake(CGRectGetMidX(usable) - 22.0,
+    // Top-right, clear of the D-pad and face buttons (standard mobile-game
+    // menu position).
+    return CGRectMake(CGRectGetMaxX(usable) - 48.0,
                       CGRectGetMinY(usable) + 4.0, 44.0, 44.0);
 }
 
