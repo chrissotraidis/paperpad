@@ -1,68 +1,82 @@
 # PaperPad handoff
 
-Latest: 2026-08-05 22:30 (America/Chicago). See `STATUS.md` for the
+Latest: 2026-08-05 23:55 (America/Chicago). See `STATUS.md` for the
 authoritative status table, `TESTING.md` for evidence, and `KNOWN-ISSUES.md`
 for the full issue list.
 
 ## What works
 
-- **macOS app launches reliably and plays Paper Mario's intro** (logo, star
-  scene, first cutscene, ~60fps for ~2 minutes): decomp
+- **macOS app is playable through the intro into Toad Town**: N64 logo, star
+  scene, storybook cutscene, opening narration (advanced with A presses),
+  and the gameplay-map load all run at ~60fps; the app stayed healthy for
+  22+ minutes (`health.log` t=1348, all counters +120/2 s). Pipeline: decomp
   (`ref/papermario` pmret @ `c61db66`) -> AOT
   (`generated/aot/paper_mario_recomp_out/`) -> mstan N64ModernRuntime + RT64
-  (both pinned + AnnePad patches in `ref/mstan-*`) -> SDL2/Metal runner
-  (`src/paperpad_main.cpp`) with vendored static SDL2 2.32.10 and three local
-  runtime patches (see `KNOWN-ISSUES.md` macOS #5 and `BUILDING.md`).
-  Evidence: `docs/evidence/macos-opening-scene.png` and 2026-08-05 21:0x
-  cutscene captures.
-- **iPhone Simulator app builds, installs, launches, and renders** the intro
-  under Metal with the Paper Mario touch overlay (stick, D-pad, A/B/Z,
-  C-buttons, L/R, START). Evidence: `docs/evidence/ios-iphone-running.png`,
+  (pinned + AnnePad patches in `ref/mstan-*`) -> SDL2/Metal runner
+  (`src/paperpad_main.cpp`) with vendored static SDL2 2.32.10.
+  Evidence: `docs/evidence/macos-gameplay-*.png`.
+- **Audio fixed**: audio tasks now run through mupen64plus-rsp-hle's NAUDIO
+  interpreter instead of the recompiled `n_aspMain` ucode. The recompiled
+  ucode is broken for Paper Mario (the audio command pointer `$29 = 0x2B0` is
+  only set by the RSP boot-ucode handoff this runtime skips, so the ucode
+  reads its own DMEM dispatch table as commands, floods "Unhandled jump
+  target", and eventually spins forever — freezing the game). HLE processes
+  the same OSTask reliably. Patch: `patches/mstan-n64modernruntime/
+  hle-audio-rsp.patch`; dependency vendored at `ref/mupen64plus-rsp-hle`.
+- **iPhone Simulator app builds, installs, launches, and reaches Toad Town
+  gameplay** under Metal with the Paper Mario touch overlay (stick, D-pad,
+  A/B/Z, C-buttons, L/R, START). Health log stable to t=450 (7.5+ minutes),
+  no RSP flood, intro story completed. Evidence:
+  `docs/evidence/ios-iphone-intro-hle.jpg`,
   `docs/evidence/ios-iphone-touch-overlay.png`.
+- Freeze diagnostic in the health logger: when task submission stalls, it
+  dumps `gGameStatusPtr` state (`startupState`/`introPart`/`mainScriptID`/
+  pressed) plus the last message-log events (`[freeze]` lines in
+  `~/Library/Application Support/health.log`).
 - Crash-log capture: `scripts/capture-crashes.sh` archives
   `~/Library/Logs/DiagnosticReports/PaperPad-*.ips` into `logs/crashes/` with
   one-line summaries (exception, signal, faulting thread, top frames).
-  22 reports archived 2026-08-05.
+  22+ reports archived 2026-08-05.
 - ROM present via `generated/rom/baserom.z64`, verified z64 sha1
   `3837f44cda784b466c9a2d99df70d77c322b97a0`; never committed.
 
 ## What does not work
 
-- **Game freezes at the intro map load ~2 minutes in (primary blocker, both
-  platforms)**: the retrace chain survives (host pump keeps broadcasts
-  flowing) but `step_game_loop` stops being called — the intro's map/scene
-  load blocks. Full analysis in `KNOWN-ISSUES.md` macOS #5.
-- Audio is unverified everywhere (RSP flood on both platforms; macOS reaches
-  gameplay anyway).
+- **Audible audio unverified**: the HLE backend completes every audio task and
+  writes mixed output, but no speaker/device proof yet (host SDL audio path
+  needs a listen check or AI-buffer sample verification).
 - macOS teardown crashes in RT64 worker autorelease cleanup
   (`objc_autoreleasePoolPop`); gameplay unaffected.
-- iPad Simulator untested (same code path as iPhone; blocked by the stall).
-- Touch input beyond overlay visibility is untested (no playthrough reached
-  yet on iOS).
+- iPad Simulator untested (same code path as iPhone; next in queue).
+- Touch input beyond overlay visibility is untested on iOS (no simctl touch
+  injection; the input path is shared with the verified macOS keyboard path).
+- The recompiled `n_aspMain` ucode remains broken (HLE bypasses it); fixing
+  it would remove the need for the HLE dependency but is not required for
+  playability.
+- One iOS stall at t≈256 on 2026-08-05 23:31 did not reproduce on the next
+  two runs; treat as intermittent until reproduced on a clean boot.
 
 ## Next highest-priority task
 
-Fix the intro map-load stall so the game reaches gameplay, then verify an
-agent-driven playthrough on macOS, iPhone Simulator, and iPad Simulator (one
-Simulator at a time). The local runtime patches (host pump with safe delivery)
-keep the app alive and the intro playing for ~2 minutes; the next step is to
-measure the game-side `dma_copy`/map-load duration directly (hook and time it)
-to confirm the RDRAM access-path slowdown, then fix the copy path. See
-`KNOWN-ISSUES.md` macOS #5.
+Verify iPad Simulator (boot the iPad sim, install, launch, confirm the intro
+completes and gameplay assets load), then confirm audible audio, then drive a
+longer agent playthrough on each target (walk Mario, enter a building, trigger
+a text box and a battle) to catch gameplay-era stalls. See `STATUS.md` →
+Next milestone.
 
 ## How to reproduce each issue
 
-- **Intro freeze (macOS)**: `build-macos2/PaperPad.app/Contents/MacOS/PaperPad
-  generated/rom/baserom.z64` (or `open build-macos2/PaperPad.app` with the ROM
-  at `~/Library/Application Support/pm.n64.us.z64`), wait ~2 min - the intro
-  plays then freezes during the intro map load; `[sgl]` stops advancing
-  (~3300-3600) while `[sched] broadcast` continues, and the health log shows
-  `gfx=+0`.
-- **Intro freeze (iOS)**: boot "iPhone 16 Pro", install
+- **Intermittent iOS stall**: boot "iPhone 16 Pro", install
   `build-ios-sim/Release/PaperPad.app`, ensure
-  `<data>/Library/Application Support/PaperPad/baserom.z64` exists (copy from
-  `generated/rom/`), `xcrun simctl launch <udid> com.chrissotraidis.paperpad`,
-  wait 1-3 min - intro freezes at a scene transition.
+  `<data>/Documents/baserom.z64` exists (copy from `generated/rom/`),
+  `xcrun simctl launch --console-pty <udid> com.chrissotraidis.paperpad`,
+  watch the health log (`<data>/Library/Application Support/health.log`) for
+  `gfx=+0` followed by a `[freeze]` dump (game state + message tail).
+- **macOS teardown crash**: run the app, quit; capture with
+  `scripts/capture-crashes.sh`.
+- **HLE audio in action**: run with stderr captured; expect NO "RSP ucode 2
+  exited unexpectedly" lines, `[health]` audio counters +120 per tick, and
+  the SP Task Thread idle between tasks (not spinning in `n_aspMain_impl`).
 - **macOS teardown crash**: run the app, quit; capture with
   `scripts/capture-crashes.sh`.
 - **macOS audio RSP flood**: run the app with stderr captured; the

@@ -1,10 +1,11 @@
 # PaperPad known issues
 
-Updated 2026-08-05 21:30.
+Updated 2026-08-05 23:55.
 
 ## macOS
 
-1. **Audio RSP microcode errors** — "RSP ucode 2 exited unexpectedly.
+1. **Audio RSP microcode errors (FIXED 2026-08-05 23:40 via HLE audio)** —
+   "RSP ucode 2 exited unexpectedly.
    exit_reason: 3" plus "Unhandled jump target 0x0000/0xFFFFF000" dumps in
    `n_aspMain` during the audio boot sequence. The game still advances
    (ultramodern's `run_rsp_task_or_warn` drops the failed task and signals SP
@@ -17,6 +18,37 @@ Updated 2026-08-05 21:30.
    (n_aspMain) grinds/stalls on a per-task basis (DMA copies crawl at
    ~200 bytes/sec when the game starts freezing), which is downstream of the
    scheduler deadlock below rather than the root cause.
+
+   **Root cause (2026-08-05 23:20, definitive)**: the recompiled `n_aspMain`
+   ucode never sets its audio command pointer. In the real ucode, `$29`
+   (the command pointer) is set to `0x2B0` in the delay slot of a `jr $5`
+   inside a DMA subroutine at RSP offset `0x10A0`; that subroutine is dead
+   code in the RSPRecomp output (no direct branch targets it and it is not in
+   `extra_indirect_branch_targets`), so on every task the ucode runs with
+   `$29 = 0` and reads DMEM[0..] — its own dispatch table — as the audio
+   command list. That yields "Unhandled jump target 0x0000/0xFFFFF000"
+   (dispatch table slots 12/14 = `0x1C84`/`0x02B0` are also missing from the
+   generated switch, so even correct opcodes 0x0C/0x0E would fail), and
+   occasionally a task enters an infinite DMA-copy spin inside the ucode
+   (observed at `n_aspMain_impl +1132/+1152`; the SP Task Thread never
+   returns, `sp_complete` never fires, all PM threads park — the freeze).
+   The upstream N64ModernRuntime never runs this ucode: it routes `M_AUDTASK`
+   through mupen64plus-rsp-hle (`alist_process_naudio`). The mstan fork
+   replaced that path with the recompiled ucode, which regressed audio.
+
+   **Fix (applied, uncommitted in `ref/`)**: restore the upstream HLE path —
+   `recomp::rsp::run_task` branches `M_AUDTASK` to a new
+   `run_hle_audio_task` that copies the OSTask to DMEM[0xFC0] and calls
+   `alist_process_naudio`. HLE sources (`alist.c`, `alist_naudio.c`,
+   `audio.c`, `memory.c`) are built into `librecomp` from the vendored
+   `ref/mupen64plus-rsp-hle`. Patch file:
+   `patches/mstan-n64modernruntime/hle-audio-rsp.patch`. Result: no flood,
+   audio tasks complete every frame, intro/story/gameplay verified on macOS
+   and iPhone Simulator. Audible output still needs a speaker/device check.
+
+   Optional follow-up (NOT needed for playability): regenerate `n_aspMain`
+   with `extra_indirect_branch_targets` including `0x1C84` and `0x02B0` (and
+   verify the `$29` setup path) so the recompiled ucode could replace HLE.
 
 2. **Teardown autorelease crash** — RT64 Workload/Present worker threads can
    crash in `objc_autoreleasePoolPop` when the process exits. This is a
@@ -33,7 +65,7 @@ Updated 2026-08-05 21:30.
 4. **No touch controls on macOS** — the touch overlay is an iOS feature;
    macOS uses keyboard/gamepad.
 
-5. **Intro freezes at the intro map load (primary blocker, 2026-08-05)** —
+5. **Intro freezes at the intro map load (FIXED 2026-08-05 23:40, see #1)** —
    the game plays the N64 logo, star scene, and first story cutscene at
    ~60fps for about 2 minutes (sgl count ~3300-3600), then freezes
    deterministically at the intro's map/scene load (the star sanctuary map
@@ -82,6 +114,15 @@ Updated 2026-08-05 21:30.
    removes the flood but stalls the boot earlier (the N64 logo also waits on
    audio) — a working audio emulation is load-bearing for the intro.
 
+   **Resolution 2026-08-05 23:40**: the HLE audio backend (see macOS #1)
+   makes audio tasks complete, so the cutscene scripts finish, `EVS_Main`
+   returns, `INTRO_AWAIT_MAIN` advances, and the game proceeds through the
+   story into Toad Town gameplay. Verified: macOS `health.log` t=1348 (22+
+   min) stable; iPhone Simulator t=450 (7.5+ min) stable. The freeze
+   mechanism (SP Task Thread parked inside the ucode → `sp_complete` never
+   fires → all game threads park) is preserved in this issue for reference;
+   the `[freeze]` health-log dump can still capture any future recurrence.
+
 6. **macOS launch hung in SDL_ShowWindow (fixed)** — the app linked Homebrew's
    `sdl2-compat` 2.32.70 (an SDL3 shim), which hung in
    `SDL_CreateWindow → SDL_ShowWindow → Cocoa_ShowWindow → SDL_RestoreWindow`.
@@ -96,7 +137,8 @@ Updated 2026-08-05 21:30.
 
 ## iOS (Simulator)
 
-1. **Boot freezes mid-intro (blocking gameplay)** — reproduced 4× on iPhone
+1. **Boot freezes mid-intro (FIXED by HLE audio, see macOS #1)** — reproduced
+   4× on iPhone
    16 Pro Simulator (2026-08-05 17:53–18:05). The audio RSP task flood
    ("RSP ucode 2 exited unexpectedly. exit_reason: 3" = UnhandledJumpTarget
    in `generated/aot/rsp/n_aspMain.cpp`) never clears: `n_aspMain_impl` parks
@@ -120,6 +162,14 @@ Updated 2026-08-05 21:30.
      scheduling under the simulator, DMEM/task state differences), or
    - gate the audio ucode behind a flag so boot proceeds silently until the
      microcode mismatch is fixed.
+
+   **Resolution 2026-08-05 23:40**: with HLE audio, the iPhone Simulator run
+   completes the intro story and loads Toad Town gameplay assets (health
+   log stable to t=450). One stall at t≈256 (2026-08-05 23:31) did not
+   reproduce on two subsequent runs; treat as intermittent until it
+   reproduces on a clean boot. The `[freeze]` diagnostic in the health
+   logger (guest `startupState`/`introPart`/`mainScriptID` + message-log
+   tail) will capture the blocking wait if it returns.
 
 2. **Drawable sized in points, not pixels** — RT64's MetalSwapChain drawable
    is 874×402 @ contentsScale 1.0 (iPhone 16 Pro) instead of 2622×1206;

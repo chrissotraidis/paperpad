@@ -12,14 +12,20 @@ upstream checkouts.
 | `ref/spaghettipad` | github.com/chrissotraidis/spaghettipad | `4f6bb0c` (plus worktree state) | Primary Apple-port reference (build scripts, iOS shell, touch patterns, docs) |
 | `ref/papermario` | github.com/pmret/papermario | `c61db66e3cce7e8fa5b53d3e9ecd01632e7b064a` | Paper Mario decomp; ELF + ROM verification for AOT generation |
 | `ref/paper-mario-recut` | github.com/SMCGames/Paper-Mario-ReCut | `098be0a501eecd5bb894a47964061d05eeedc3a2` | Game-specific N64Recomp foundation (runtime + RT64 vendored, RSP config, generated-output interface) |
+| `ref/mstan-n64modernruntime` | mstan N64ModernRuntime fork (AnnePad) | local checkout | Runtime used by PaperPad (N64Recomp/RSPRecomp/librecomp/ultramodern); patched for HLE audio (`patches/mstan-n64modernruntime/hle-audio-rsp.patch`) |
+| `ref/mstan-rt64` | mstan RT64 fork with Apple Metal RHI | local checkout | Renderer |
+| `ref/mupen64plus-rsp-hle` | github.com/mupen64plus/mupen64plus-rsp-hle | local checkout (GPL-2.0) | HLE NAUDIO audio backend for `M_AUDTASK` — replaces the broken recompiled aspMain ucode (see `KNOWN-ISSUES.md` macOS #1) |
+| `ref/spaghettipad` | github.com/chrissotraidis/spaghettipad | `4f6bb0c` (plus worktree state) | Primary Apple-port reference (build scripts, iOS shell, touch patterns, docs) |
 
-## Upstream dependency graph (vendored inside ReCut)
+## Upstream dependency graph
 
 - N64ModernRuntime (N64Recomp, RSPRecomp, librecomp, ultramodern, thirdparty
-  miniz/o1heap/xxHash/concurrentqueue) — vendored in
-  `ref/paper-mario-recut/lib/N64ModernRuntime`.
-- RT64 (renderer; direct Metal RHI included) — vendored in
-  `ref/paper-mario-recut/lib/rt64`.
+  miniz/o1heap/xxHash/concurrentqueue) — `ref/mstan-n64modernruntime`
+  (mstan fork used by AnnePad; PaperPad patches applied).
+- RT64 (renderer; direct Metal RHI included) — `ref/mstan-rt64`.
+- mupen64plus-rsp-hle — `ref/mupen64plus-rsp-hle`; sources `alist.c`,
+  `alist_naudio.c`, `audio.c`, `memory.c` compiled into `librecomp` for
+  audio task processing.
 - N64Recomp dependencies: rabbitizer, ELFIO, toml11, fmt, sljit (submodules
   of the N64Recomp checkout, initialized on fetch).
 - SDL2 2.30.x is used by ReCut's desktop launcher; Apple targets may replace

@@ -42,19 +42,25 @@ exists; RT64 consumes `SDL2_INCLUDE_DIRS`/`SDL2_LIBRARIES` pointing at it.
 
 ## Local runtime patches (not committed)
 
-Three surgical edits live in `ref/mstan-n64modernruntime/ultramodern/src/`
-(the gitignored reference checkout) to keep the game playing through the
-intro:
+Patches live in `patches/` and are applied manually to the gitignored
+`ref/` checkouts. Re-apply them after refreshing a checkout. The current set
+(2026-08-05):
 
-- `scheduler_tick.cpp`: the monitor thread drains pending external messages
-  every 50ms (retrace/completion pump).
-- `mesgqueue.cpp`: `do_send` signals a blocked receiver's host semaphore when
-  the sender is a host thread.
-- `threads.cpp`: `run_next_thread` waits on the external-message queue instead
-  of throwing when the running queue is empty.
+`patches/mstan-n64modernruntime/hle-audio-rsp.patch` (the important one):
+- `librecomp/src/rsp.cpp`: restore the upstream `M_AUDTASK` → HLE path.
+  `recomp::rsp::run_task` now branches audio tasks to
+  `run_hle_audio_task`, which copies the OSTask to DMEM[0xFC0] and calls
+  `alist_process_naudio` (mupen64plus-rsp-hle) instead of running the
+  recompiled `n_aspMain` ucode (broken for Paper Mario; see
+  `KNOWN-ISSUES.md` macOS #1).
+- `librecomp/CMakeLists.txt`: builds `alist.c`, `alist_naudio.c`, `audio.c`,
+  `memory.c` from `ref/mupen64plus-rsp-hle/src` into `librecomp`.
+- `ultramodern/src/scheduler_tick.cpp`: export `ultramodern_get_rdram()` for
+  the freeze-state diagnostic in the health logger.
 
-These are not committed (ref/ is gitignored); re-apply them after refreshing
-the checkout. Full rationale in `KNOWN-ISSUES.md` macOS #5.
+Older pump patches (kept in the checkout, rationale in `KNOWN-ISSUES.md`
+macOS #5): `scheduler_tick.cpp` external-message pump, `mesgqueue.cpp` host
+semaphore signal, `threads.cpp` external-queue wait.
 
 ## Prerequisites
 

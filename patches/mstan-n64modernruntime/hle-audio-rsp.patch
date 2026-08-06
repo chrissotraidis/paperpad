@@ -1,0 +1,228 @@
+diff --git a/librecomp/CMakeLists.txt b/librecomp/CMakeLists.txt
+index f3348eb..2cc6707 100644
+--- a/librecomp/CMakeLists.txt
++++ b/librecomp/CMakeLists.txt
+@@ -5,6 +5,12 @@ set(CMAKE_CXX_STANDARD 20)
+ set(CMAKE_CXX_STANDARD_REQUIRED True)
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ 
++option(N64MODERN_NO_DYNAMIC_CODE "Compile out runtime code generation and dynamic-library loading" OFF)
++
++# mupen64plus-rsp-hle: HLE NAUDIO audio backend for M_AUDTASK (see
++# patches/mupen64plus-rsp-hle/hle-audio.patch and docs/KNOWN-ISSUES.md #5).
++set(MUPEN_RSP_HLE_DIR "${PROJECT_SOURCE_DIR}/../../mupen64plus-rsp-hle")
++
+ # Define the library
+ add_library(librecomp STATIC
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/ai.cpp"
+@@ -38,6 +44,10 @@ add_library(librecomp STATIC
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/ultra_translation.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/src/vi.cpp"
+     "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/o1heap/o1heap/o1heap.c"
++    "${MUPEN_RSP_HLE_DIR}/src/alist.c"
++    "${MUPEN_RSP_HLE_DIR}/src/alist_naudio.c"
++    "${MUPEN_RSP_HLE_DIR}/src/audio.c"
++    "${MUPEN_RSP_HLE_DIR}/src/memory.c"
+ )
+ 
+ target_include_directories(librecomp PUBLIC
+@@ -47,6 +57,7 @@ target_include_directories(librecomp PUBLIC
+     "${PROJECT_SOURCE_DIR}/../thirdparty"
+     "${PROJECT_SOURCE_DIR}/../thirdparty/concurrentqueue"
+     "${PROJECT_SOURCE_DIR}/../thirdparty/o1heap"
++    "${MUPEN_RSP_HLE_DIR}/src"
+ )
+ target_include_directories(librecomp PRIVATE
+     "${CMAKE_CURRENT_SOURCE_DIR}/include/librecomp"
+@@ -95,5 +106,11 @@ endif()
+ add_subdirectory(${PROJECT_SOURCE_DIR}/../thirdparty/miniz ${CMAKE_CURRENT_BINARY_DIR}/miniz)
+ add_subdirectory(${PROJECT_SOURCE_DIR}/../N64Recomp ${CMAKE_CURRENT_BINARY_DIR}/N64Recomp EXCLUDE_FROM_ALL)
+ 
+-target_link_libraries(librecomp PRIVATE ultramodern N64Recomp LiveRecomp)
++target_link_libraries(librecomp PRIVATE ultramodern N64Recomp)
++if (N64MODERN_NO_DYNAMIC_CODE)
++    target_compile_definitions(librecomp PUBLIC N64MODERN_NO_DYNAMIC_CODE=1)
++    message(STATUS "librecomp: runtime code generation and dynamic loading compiled out")
++else()
++    target_link_libraries(librecomp PRIVATE LiveRecomp)
++endif()
+ target_link_libraries(librecomp PUBLIC miniz)
+diff --git a/librecomp/src/rsp.cpp b/librecomp/src/rsp.cpp
+index 253a011..e85af96 100644
+--- a/librecomp/src/rsp.cpp
++++ b/librecomp/src/rsp.cpp
+@@ -22,6 +22,7 @@
+ #include <atomic>
+ #include <algorithm>
+ #include <cassert>
++#include <cstdarg>
+ #include <cstdio>
+ #include <cstdlib>
+ #include <cstring>
+@@ -33,6 +34,10 @@
+ #include "rsp.hpp"
+ #include "librecomp/ultra_trace.hpp"
+ 
++extern "C" {
++#include "hle_internal.h"
++}
++
+ // Last live RspContext pointer. Captured at every run_pre_task_hook
+ // call (which runs at the top of every recompiled ucode_func wrapper).
+ // While that ucode is running, its pc_trail / watchdog_count fields
+@@ -257,6 +262,87 @@ uint8_t dmem[0x1000];
+ uint16_t rspReciprocals[512];
+ uint16_t rspInverseSquareRoots[512];
+ 
++// mupen64plus-rsp-hle audio backend (restored from the upstream
++// N64ModernRuntime path that the mstan fork replaced with the recompiled
++// aspMain ucode). The recompiled n_aspMain never sets its command pointer
++// ($29 = 0x2B0 lives in the boot-ucode handoff this runtime skips), so it
++// reads the DMEM dispatch table as commands, floods "Unhandled jump target",
++// and eventually spins forever inside the ucode — stalling SP task
++// completion and freezing the whole game. HLE audio processes the same
++// OSTask directly and completes reliably. See patches/ and docs/KNOWN-ISSUES.md.
++
++extern "C" void HleVerboseMessage(void*, const char*, ...) {
++}
++
++extern "C" void HleInfoMessage(void*, const char*, ...) {
++}
++
++extern "C" void HleErrorMessage(void*, const char* message, ...) {
++    std::fprintf(stderr, "[rsp-hle] error: ");
++    va_list args;
++    va_start(args, message);
++    std::vfprintf(stderr, message, args);
++    va_end(args);
++    std::fprintf(stderr, "\n");
++}
++
++extern "C" void HleWarnMessage(void*, const char* message, ...) {
++    static uint32_t warning_count = 0;
++    if (warning_count++ >= 32) {
++        return;
++    }
++
++    std::fprintf(stderr, "[rsp-hle] warning: ");
++    va_list args;
++    va_start(args, message);
++    std::vfprintf(stderr, message, args);
++    va_end(args);
++    std::fprintf(stderr, "\n");
++}
++
++extern "C" void HleCheckInterrupts(void*) {
++}
++
++extern "C" void HleProcessDlistList(void*) {
++}
++
++extern "C" void HleProcessAlistList(void*) {
++}
++
++extern "C" void HleProcessRdpList(void*) {
++}
++
++extern "C" void HleShowCFB(void*) {
++}
++
++extern "C" int HleForwardTask(void*) {
++    return 1;
++}
++
++extern "C" void rsp_break(hle_t*, unsigned int) {
++}
++
++extern "C" void mp3_task(hle_t*, unsigned int, uint32_t) {
++}
++
++namespace {
++    // Paper Mario's audio tasks use the Nintendo aspMain ("naudio") ucode.
++    // HLE interprets the command list directly and writes the mixed output
++    // into the task's AI buffers, then we report SP completion normally.
++    bool run_hle_audio_task(uint8_t* rdram, const OSTask* task) {
++        static hle_t hle_state{};
++        static uint8_t hle_dmem[0x1000]{};
++        static uint8_t hle_imem[0x1000]{};
++
++        hle_state.dram = rdram;
++        hle_state.dmem = hle_dmem;
++        hle_state.imem = hle_imem;
++        std::memcpy(&hle_dmem[0xFC0], task, sizeof(OSTask));
++        alist_process_naudio(&hle_state);
++        return true;
++    }
++}
++
+ void recomp::rsp::trace_dma(bool write, uint32_t dmem_addr, uint32_t dram_addr,
+                             uint32_t byte_count) {
+     if (!rsp_dma_trace_enabled()) {
+@@ -376,6 +462,12 @@ void recomp::rsp::constants_init() {
+ 
+ // Runs a recompiled RSP microcode
+ bool recomp::rsp::run_task(uint8_t* rdram, const OSTask* task) {
++    // Audio tasks are processed by the HLE NAUDIO interpreter instead of the
++    // recompiled aspMain ucode (see the header comment above run_hle_audio_task).
++    if (task->t.type == M_AUDTASK) {
++        return run_hle_audio_task(rdram, task);
++    }
++
+     assert(rsp_callbacks.get_rsp_microcode != nullptr);
+     RspUcodeFunc* ucode_func = rsp_callbacks.get_rsp_microcode(rdram, task);
+ 
+diff --git a/ultramodern/src/scheduler_tick.cpp b/ultramodern/src/scheduler_tick.cpp
+index 6f4fef3..8ba2ef8 100644
+--- a/ultramodern/src/scheduler_tick.cpp
++++ b/ultramodern/src/scheduler_tick.cpp
+@@ -17,6 +17,7 @@
+ #include "ultramodern/scheduler_tick.hpp"
+ 
+ extern "C" uint32_t recomp_rsp_consume_preempt_skip_budget(void);
++extern "C" void ultramodern_deliver_external_message_host(uint8_t*);
+ #ifdef N64_COSIM
+ extern "C" void ultramodern_cosim_check_vi_quiescence(uint8_t* rdram);
+ extern "C" uint32_t ultramodern_cosim_deliver_due_rcp_events(uint8_t* rdram);
+@@ -47,6 +48,11 @@ std::thread g_monitor_thread;
+ // threads); no sync needed beyond the relaxed-load.
+ uint8_t* g_rdram = nullptr;
+ 
++// Host-side access to the recompiled RDRAM for diagnostics (freeze triage).
++extern "C" uint8_t* ultramodern_get_rdram(void) {
++    return g_rdram;
++}
++
+ // Threshold over which the monitor considers the current game thread
+ // stuck. 200 ms is well above any legitimate per-frame budget at 30 fps
+ // (33 ms) or 60 fps (16 ms), but small enough that stuck busy-waits
+@@ -104,13 +110,28 @@ void monitor_func() {
+ 
+         if (!g_enabled.load(std::memory_order_relaxed)) continue;
+ 
++        // Local fix for PaperPad boot deadlock: when every game thread is
++        // parked in osRecvMesg (all blocked before any of them can run the
++        // dequeue_external_messages drain), host-posted events (VI retrace,
++        // SP/DP/AI completions) sit in the external queue forever and the
++        // guest never wakes. The monitor thread has g_rdram and runs on a
++        // host timer, so deliver one pending external message directly from
++        // here without touching the scheduler's running queue.
+         uint64_t last = g_last_switch_ms.load(std::memory_order_relaxed);
+         if (last == 0) continue; // No game thread has resumed yet.
+ 
+-        if (g_should_yield.load(std::memory_order_relaxed)) continue; // Already pending.
+-
+         uint64_t now = now_ms();
+         if (now - last > kStuckThresholdMs) {
++            // Only deliver when the game is genuinely stuck (no game-thread
++            // context switch for kStuckThresholdMs): every game thread is
++            // parked, so the running/blocked queues are quiescent and safe to
++            // mutate from this host thread. Deliver on EVERY stuck tick (not
++            // just once): g_should_yield is cleared by a game thread servicing
++            // it, and while all threads are parked nobody clears it, so the old
++            // guard would permanently silence this pump.
++            if (g_rdram != nullptr && ultramodern::external_message_pending()) {
++                ultramodern_deliver_external_message_host(g_rdram);
++            }
+             g_should_yield.store(1, std::memory_order_relaxed);
+         }
+     }

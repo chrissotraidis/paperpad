@@ -43,6 +43,10 @@ extern "C" uint64_t ultramodern_submit_audio_count(void);
 extern "C" uint64_t ultramodern_submit_other_count(void);
 extern "C" uint64_t ultramodern_sp_complete_count(void);
 extern "C" uint64_t ultramodern_dp_complete_count(void);
+extern "C" uint8_t* ultramodern_get_rdram(void);
+extern "C" void ultramodern_mesg_recent_copy(
+    void* out_void, size_t cap, size_t* n_written, uint64_t* next_seq_out);
+extern "C" size_t ultramodern_mesg_event_size(void);
 bool ultramodern::external_message_pending();
 
 #if defined(__APPLE__) && TARGET_OS_IPHONE
@@ -627,13 +631,11 @@ namespace {
 
     RspUcodeFunc* get_rsp_microcode(uint8_t* rdram, const OSTask* task) {
         (void)rdram;
-        // Audio (aspMain) tasks currently make the recompiled RSP ucode stall
-        // mid-task on iOS (and flood errors on macOS), which can wedge the boot
-        // pipeline while the gfx manager waits on an audio SP completion.
-        // PAPERPAD_DROP_AUDIO_RSP=1 routes audio tasks through the runtime's
-        // graceful drop path (signals SP completion without running the ucode),
-        // letting the game boot and play silently. Audio remains unverified;
-        // this is the documented workaround until the ucode stall is fixed.
+        // Audio (M_AUDTASK) is handled by the runtime's HLE NAUDIO backend
+        // (mupen64plus-rsp-hle) since 2026-08-05; the recompiled n_aspMain
+        // ucode is broken for Paper Mario (command pointer never set) and
+        // used to flood errors / spin forever. See KNOWN-ISSUES.md macOS #1.
+        // PAPERPAD_DROP_AUDIO_RSP=1 remains as a legacy escape hatch.
         static const bool drop_audio_rsp = []() {
             const char* v = std::getenv("PAPERPAD_DROP_AUDIO_RSP");
             return v != nullptr && v[0] != '\0' && v[0] != '0';
@@ -752,22 +754,94 @@ int PAPERPAD_MAIN(int argc, char** argv) {
         uint64_t last_gfx = 0, last_sp = 0, last_dp = 0, last_audio = 0;
         FILE* hf = std::fopen((app_config_path() / "health.log").string().c_str(), "a");
         FILE* health_f = hf ? hf : stderr;
+        int stalled_ticks = 0;
+        bool freeze_dumped = false;
         for (int i = 0; ; ++i) {
             std::this_thread::sleep_for(std::chrono::seconds(2));
             uint64_t gfx = ultramodern_submit_gfx_count();
             uint64_t audio = ultramodern_submit_audio_count();
             uint64_t sp = ultramodern_sp_complete_count();
             uint64_t dp = ultramodern_dp_complete_count();
+            uint64_t dgfx = gfx - last_gfx;
             std::fprintf(health_f,
                 "[health] t=%lld gfx=+%llu audio=+%llu sp=+%llu dp=+%llu ext_pending=%d\n",
                 (long long)(i * 2),
-                (unsigned long long)(gfx - last_gfx),
+                (unsigned long long)dgfx,
                 (unsigned long long)(audio - last_audio),
                 (unsigned long long)(sp - last_sp),
                 (unsigned long long)(dp - last_dp),
                 ultramodern::external_message_pending() ? 1 : 0);
             std::fflush(health_f);
             last_gfx = gfx; last_audio = audio; last_sp = sp; last_dp = dp;
+
+            // Freeze triage: once task submission stalls for two consecutive
+            // ticks, dump the guest startup state + the recent message-log
+            // tail so the blocking wait can be identified from evidence.
+            if (dgfx == 0) {
+                stalled_ticks++;
+            } else {
+                stalled_ticks = 0;
+                freeze_dumped = false;
+            }
+            if (stalled_ticks >= 2 && !freeze_dumped) {
+                freeze_dumped = true;
+                uint8_t* rdram = ultramodern_get_rdram();
+                std::fprintf(health_f, "[freeze] gfx stalled for %d ticks\n", stalled_ticks);
+                if (rdram != nullptr) {
+                    constexpr uint64_t kMemBase = 0xFFFFFFFF80000000ull;
+                    constexpr uint32_t kMemMask = 0x3FFFFFFFu;
+                    auto gw = [&](uint64_t vaddr) -> uint32_t {
+                        return *reinterpret_cast<uint32_t*>(
+                            rdram + ((vaddr - kMemBase) & kMemMask));
+                    };
+                    auto gb = [&](uint64_t vaddr) -> uint8_t {
+                        return *reinterpret_cast<uint8_t*>(
+                            rdram + ((vaddr - kMemBase) & kMemMask));
+                    };
+                    uint32_t status = gw(0x8007419C);           // gGameStatusPtr
+                    if (status != 0) {
+                        std::fprintf(health_f,
+                            "[freeze] gGameStatusPtr=0x%X pressed=0x%X mainScriptID=%d introPart=%d startupState=%d D_800A0964=%u\n",
+                            status,
+                            gw(status + 0x10),
+                            (int)gw(status + 0x6C),
+                            (int)gb(status + 0xA8),
+                            (int)gb(status + 0xAC),
+                            gw(0x800A0964));
+                    } else {
+                        std::fprintf(health_f, "[freeze] gGameStatusPtr is null\n");
+                    }
+                }
+                // Recent message-log tail (op, queue, msg, valid before/after).
+                const size_t kEventSize = ultramodern_mesg_event_size();
+                if (kEventSize >= 32 && kEventSize <= 64) {
+                    std::vector<uint8_t> buf(kEventSize * 8);
+                    size_t n = 0;
+                    uint64_t seq = 0;
+                    ultramodern_mesg_recent_copy(buf.data(), 8, &n, &seq);
+                    std::fprintf(health_f, "[freeze] mesg seq=%llu n=%zu\n",
+                                 (unsigned long long)seq, n);
+                    for (size_t e = 0; e < n; e++) {
+                        const uint8_t* p = buf.data() + e * kEventSize;
+                        auto rd32 = [&](size_t off) -> uint32_t {
+                            uint32_t v = 0;
+                            for (int b = 0; b < 4; b++) v |= (uint32_t)p[off + b] << (8 * b);
+                            return v;
+                        };
+                        auto rd16 = [&](size_t off) -> uint16_t {
+                            uint16_t v = 0;
+                            for (int b = 0; b < 2; b++) v |= (uint16_t)p[off + b] << (8 * b);
+                            return v;
+                        };
+                        std::fprintf(health_f,
+                            "[freeze]   op=%u mq=0x%X msg=0x%X tid=%u val=%u->%u block=%u\n",
+                            (unsigned)p[34], rd32(16), rd32(20), (unsigned)rd16(28),
+                            (unsigned)rd16(30), (unsigned)rd16(32),
+                            (unsigned)p[35]);
+                    }
+                }
+                std::fflush(health_f);
+            }
         }
     }).detach();
 #if defined(__APPLE__)
