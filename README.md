@@ -39,10 +39,11 @@ ROM and asset boundary notes.
   flood). Evidence in `docs/evidence/`.
 - **iPhone Simulator**: same progression with the Paper Mario touch overlay
   (stick, D-pad, A/B/Z, C-buttons, L/R, START); verified stable 10+ minutes.
-- **iPad Simulator**: runs the intro with the touch overlay; a native-mode
-  fix (device family 1,2) is built — see `docs/STATUS.md` for the current
-  target-by-target status, `docs/KNOWN-ISSUES.md` for known issues, and
-  `docs/HANDOFF.md` for the handoff.
+- **iPad Simulator**: full flow verified — title screen, storybook, name
+  entry, file select, and Mario's House gameplay at ~60fps with the touch
+  overlay, crisp native rendering. See `docs/STATUS.md` for target-by-target
+  status, `docs/KNOWN-ISSUES.md` for known issues, and `docs/HANDOFF.md` for
+  the handoff.
 - Physical-device signing remains an external boundary (no signing identity
   or device in this environment).
 
