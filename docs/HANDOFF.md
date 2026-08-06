@@ -1,13 +1,13 @@
 # PaperPad handoff
 
-Latest: 2026-08-05 21:30 (America/Chicago). See `STATUS.md` for the
+Latest: 2026-08-05 22:30 (America/Chicago). See `STATUS.md` for the
 authoritative status table, `TESTING.md` for evidence, and `KNOWN-ISSUES.md`
 for the full issue list.
 
 ## What works
 
 - **macOS app launches reliably and plays Paper Mario's intro** (logo, star
-  scene, first cutscene, ~60fps for 1-3 minutes): decomp
+  scene, first cutscene, ~60fps for ~2 minutes): decomp
   (`ref/papermario` pmret @ `c61db66`) -> AOT
   (`generated/aot/paper_mario_recomp_out/`) -> mstan N64ModernRuntime + RT64
   (both pinned + AnnePad patches in `ref/mstan-*`) -> SDL2/Metal runner
@@ -28,13 +28,10 @@ for the full issue list.
 
 ## What does not work
 
-- **Game freezes at a scene transition 1-3 minutes into the intro (primary
-  blocker, both platforms)**: the mstan cooperative scheduler deadlocks when
-  every game thread parks in `osRecvMesg`. Host-delivered retraces land in the
-  guest queue but no game thread is resumed, so `step_game_loop` stops being
-  called. The audio RSP ucode grind (`n_aspMain` UnhandledJumpTarget /
-  crawl) is a downstream symptom. Full analysis in `KNOWN-ISSUES.md` macOS
-  #5.
+- **Game freezes at the intro map load ~2 minutes in (primary blocker, both
+  platforms)**: the retrace chain survives (host pump keeps broadcasts
+  flowing) but `step_game_loop` stops being called — the intro's map/scene
+  load blocks. Full analysis in `KNOWN-ISSUES.md` macOS #5.
 - Audio is unverified everywhere (RSP flood on both platforms; macOS reaches
   gameplay anyway).
 - macOS teardown crashes in RT64 worker autorelease cleanup
@@ -45,22 +42,22 @@ for the full issue list.
 
 ## Next highest-priority task
 
-Fix the cooperative-scheduler deadlock at the intro's scene transition so the
-game reaches the title screen and gameplay, then verify an agent-driven
-playthrough on macOS, iPhone Simulator, and iPad Simulator (one Simulator at a
-time). The local runtime patches (monitor pump, host-side wake, scheduler
-wait) extend the intro from ~40s to 1-3 minutes but don't fully resolve it;
-the next hypothesis to test is a secondary stall at the scene-transition
-asset DMA load (the `dma_copy`/PI path) or the audio ucode grind starving the
-pump's wake. See `KNOWN-ISSUES.md` macOS #5.
+Fix the intro map-load stall so the game reaches gameplay, then verify an
+agent-driven playthrough on macOS, iPhone Simulator, and iPad Simulator (one
+Simulator at a time). The local runtime patches (host pump with safe delivery)
+keep the app alive and the intro playing for ~2 minutes; the next step is to
+measure the game-side `dma_copy`/map-load duration directly (hook and time it)
+to confirm the RDRAM access-path slowdown, then fix the copy path. See
+`KNOWN-ISSUES.md` macOS #5.
 
 ## How to reproduce each issue
 
 - **Intro freeze (macOS)**: `build-macos2/PaperPad.app/Contents/MacOS/PaperPad
   generated/rom/baserom.z64` (or `open build-macos2/PaperPad.app` with the ROM
-  at `~/Library/Application Support/pm.n64.us.z64`), wait 1-3 min - the intro
-  plays then freezes on a black/transition screen; `[sgl]` stops advancing and
-  the health log shows `gfx=+0`.
+  at `~/Library/Application Support/pm.n64.us.z64`), wait ~2 min - the intro
+  plays then freezes during the intro map load; `[sgl]` stops advancing
+  (~3300-3600) while `[sched] broadcast` continues, and the health log shows
+  `gfx=+0`.
 - **Intro freeze (iOS)**: boot "iPhone 16 Pro", install
   `build-ios-sim/Release/PaperPad.app`, ensure
   `<data>/Library/Application Support/PaperPad/baserom.z64` exists (copy from

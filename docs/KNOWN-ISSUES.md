@@ -33,34 +33,42 @@ Updated 2026-08-05 21:30.
 4. **No touch controls on macOS** — the touch overlay is an iOS feature;
    macOS uses keyboard/gamepad.
 
-5. **Intro freezes at a scene transition (primary blocker, 2026-08-05)** —
+5. **Intro freezes at the intro map load (primary blocker, 2026-08-05)** —
    the game plays the N64 logo, star scene, and first story cutscene at
-   ~60fps for 1-3 minutes, then freezes on a black/transition screen. Root
-   cause (verified with instrumentation): the mstan runtime's cooperative
-   scheduler deadlocks when every game thread parks in `osRecvMesg`
-   (`do_recv` → `run_next_thread_and_wait` → host semaphore). The VI thread
-   keeps posting retraces (60/s) into the runtime's external-message queue,
-   but no game thread runs to drain/deliver them, so `nuScEventHandler`
-   never receives a retrace, `gfxRetrace_Callback` stops calling
-   `step_game_loop`, and the game freezes.
+   ~60fps for about 2 minutes (sgl count ~3300-3600), then freezes
+   deterministically at the intro's map/scene load (the star sanctuary map
+   after the title screen). Evidence: the retrace broadcasts keep firing
+   after the freeze (the host pump keeps the chain alive), but `step_game_loop`
+   stops being called, so the game-side load is the blocker.
 
    Local runtime patches that substantially help (applied in
    `ref/mstan-n64modernruntime`, not committed):
    - `scheduler_tick.cpp`: the monitor thread now drains one pending external
-     message per 50ms tick (the "pump"), so retraces/completions reach the
-     guest queues even when all game threads are parked.
-   - `mesgqueue.cpp`: `do_send` wakes a blocked receiver's host semaphore when
-     the sender is a host thread (the pump), because the cooperative scheduler
-     only does that handoff when a game thread runs it.
-   - `threads.cpp`: `run_next_thread` waits on the external-message queue
-     instead of throwing "No runnable threads remain" when the running queue
-     is empty.
+     message per 50ms tick only when the game is genuinely stuck (no game-thread
+     context switch for 200ms), writing it directly into the guest queue and
+     waking the first blocked receiver. This keeps the app alive (no more
+     SIGBUS from host-thread scheduler races) and extends the intro from ~40s
+     to ~2 minutes, but does not unblock the map-load stall.
+   - `mesgqueue.cpp`: `ultramodern_deliver_external_message_host` performs the
+     pump's delivery without racing the cooperative scheduler's running queue
+     (safe because it only runs when every game thread is parked).
 
-   Result: the game went from freezing at ~40s (N64 logo) to playing the intro
-   for 1-3 minutes. The deadlock still re-triggers at the scene transition;
-   the delivery now succeeds (do_send sent=1) but the game freezes shortly
-   after, suggesting a secondary stall (asset DMA load, or the audio ucode
-   grind starving the pump's wake) not yet root-caused.
+   Failed approaches this session:
+   - Direct host-side `schedule_running_thread` + semaphore signal on every
+     pump tick corrupted the running queue (SIGBUS at a garbage thread
+     pointer, KERN_PROTECTION_FAILURE at 0x380000004) — reverted.
+   - Making `run_next_thread` wait on the external queue instead of throwing
+     caused the same queue corruption under load — reverted.
+   - Dropping audio RSP tasks (`PAPERPAD_DROP_AUDIO_RSP=1`) removes the audio
+     ucode grind but the game stalls EARLIER (at the N64 logo) — the audio
+     subsystem is load-bearing for the intro progression.
+
+   Next hypothesis: the intro map load (`dma_copy` / PI reads for the star
+   sanctuary map) blocks inside a game thread; the measured "slow DMA copy"
+   (~200 bytes/sec in the RSP ucode) suggests the RDRAM access path itself is
+   degraded, which would make large map loads effectively hang. Measure the
+   game-side `dma_copy` duration directly (hook `load_map`/`dma_copy` and time
+   it) to confirm before fixing the access path.
 
 6. **macOS launch hung in SDL_ShowWindow (fixed)** — the app linked Homebrew's
    `sdl2-compat` 2.32.70 (an SDL3 shim), which hung in
