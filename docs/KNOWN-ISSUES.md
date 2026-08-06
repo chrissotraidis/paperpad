@@ -63,12 +63,24 @@ Updated 2026-08-05 21:30.
      ucode grind but the game stalls EARLIER (at the N64 logo) — the audio
      subsystem is load-bearing for the intro progression.
 
-   Next hypothesis: the intro map load (`dma_copy` / PI reads for the star
-   sanctuary map) blocks inside a game thread; the measured "slow DMA copy"
-   (~200 bytes/sec in the RSP ucode) suggests the RDRAM access path itself is
-   degraded, which would make large map loads effectively hang. Measure the
-   game-side `dma_copy` duration directly (hook `load_map`/`dma_copy` and time
-   it) to confirm before fixing the access path.
+   Refined analysis (2026-08-05 23:00): the DMA copies are FAST (the game's
+   `dma_copy` completes in microseconds, including a 197KB map asset). The
+   intro map load succeeds: the asset searches resolve correct names
+   (`hos_05_shape`, `hos_bg`, `hos_05_hit`), the scripts start with valid
+   pointers, and `does_script_exist(mainScriptID)` keeps returning true. The
+   freeze is the intro's own wait logic: `state_intro.c` `INTRO_AWAIT_MAIN`
+   waits while the map's main script exists, and the main script
+   (`EVS_Main` for `hos_05`, entry 3) blocks in
+   `ExecWait(N(EVS_SetupMusic))`/`Exec(N(EVS_Scene_IntroStory))` — the
+   intro cutscene's music/sound-dependent commands. With the audio RSP ucode
+   broken (the `n_aspMain` error flood), the audio events the cutscene waits
+   for never fire, so the script never completes and the intro waits forever.
+
+   Fix direction: repair the audio path (make the recompiled audio ucode
+   actually produce/complete audio tasks) OR make the audio-dependent waits
+   non-blocking when audio is unavailable. `PAPERPAD_DROP_AUDIO_RSP=1`
+   removes the flood but stalls the boot earlier (the N64 logo also waits on
+   audio) — a working audio emulation is load-bearing for the intro.
 
 6. **macOS launch hung in SDL_ShowWindow (fixed)** — the app linked Homebrew's
    `sdl2-compat` 2.32.70 (an SDL3 shim), which hung in
