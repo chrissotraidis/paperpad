@@ -29,6 +29,11 @@ for the full issue list.
   no RSP flood, intro story completed. Evidence:
   `docs/evidence/ios-iphone-intro-hle.jpg`,
   `docs/evidence/ios-iphone-touch-overlay.png`.
+- **iPad Simulator app builds, installs, launches, and plays the intro at
+  full speed** with the touch overlay; it previously ran in
+  iPhone-compatibility mode (iPhone-sized 667×375 window, zoomed/cropped
+  content). The native-mode fix (device family 1,2) is built and pushed
+  (commit `eca833c`); a fresh-boot verification is the next step.
 - Freeze diagnostic in the health logger: when task submission stalls, it
   dumps `gGameStatusPtr` state (`startupState`/`introPart`/`mainScriptID`/
   pressed) plus the last message-log events (`[freeze]` lines in
@@ -47,7 +52,7 @@ for the full issue list.
   needs a listen check or AI-buffer sample verification).
 - macOS teardown crashes in RT64 worker autorelease cleanup
   (`objc_autoreleasePoolPop`); gameplay unaffected.
-- iPad Simulator untested (same code path as iPhone; next in queue).
+- iPad native-mode verification pending (fix built; sim needs a fresh boot).
 - Touch input beyond overlay visibility is untested on iOS (no simctl touch
   injection; the input path is shared with the verified macOS keyboard path).
 - The recompiled `n_aspMain` ucode remains broken (HLE bypasses it); fixing
@@ -58,11 +63,11 @@ for the full issue list.
 
 ## Next highest-priority task
 
-Verify iPad Simulator (boot the iPad sim, install, launch, confirm the intro
-completes and gameplay assets load), then confirm audible audio, then drive a
-longer agent playthrough on each target (walk Mario, enter a building, trigger
-a text box and a battle) to catch gameplay-era stalls. See `STATUS.md` →
-Next milestone.
+Verify the iPad native-mode fix (boot the iPad sim, install, launch, confirm
+the window is fullscreen and the intro completes into gameplay), then confirm
+audible audio, then drive a longer agent playthrough on each target (walk
+Mario, enter a building, trigger a text box and a battle) to catch
+gameplay-era stalls. See `STATUS.md` → Next milestone.
 
 ## How to reproduce each issue
 

@@ -6,7 +6,7 @@ Updated 2026-08-05 23:55 (America/Chicago). Target-by-target status.
 |---|---|---|
 | macOS native app | **Playable: intro, story narration, and Toad Town gameplay reached; runs 20+ minutes at ~60fps with HLE audio** | `docs/evidence/macos-gameplay-opening.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`; health log `t=1348` stable |
 | iPhone Simulator | **Intro + story + Toad Town gameplay reached; touch overlay visible; 7.5+ minutes stable** | `docs/evidence/ios-iphone-intro-hle.jpg`; health log `t=450` stable |
-| iPad Simulator | Pending (same code path; verify after the iPhone run) | — |
+| iPad Simulator | **Runs and plays the intro; native-mode fix (UIDeviceFamily 1,2) built and pushed — full verification pending a fresh boot** | `docs/evidence/ipad-intro-hle.png` (pre-fix compatibility-mode capture); fix commit `eca833c` |
 | iOS device (unsigned IPA) | Not started | — |
 | Signed physical device | Blocked externally (no signing identity/device) | — |
 
@@ -62,10 +62,24 @@ only); audio output not yet confirmed audible.
   screenshots capture the portrait framebuffer, so landscape app content
   appears bottom/right-anchored in PNGs.
 
+## iPad Simulator current state (2026-08-06)
+
+- The app previously ran in iPhone-compatibility mode on iPad
+  (`UIDeviceFamily=[1]`): an iPhone-sized 667×375 window in the middle of the
+  iPad screen, game content zoomed/cropped (user-reported 2026-08-06).
+  Diagnosed via window diagnostics: `screen=667x375 mode=750x1334
+  native=750x1334` (iPhone-8-sized canvas) while the sim framebuffer was the
+  full 1668×2420. Fixed by removing `LSRequiresIPhoneOS` and setting the
+  target device family to `1,2` (commit `eca833c`).
+- Verification of the native iPad window (fullscreen, correct scale) and a
+  playthrough to gameplay is the next step; it requires a fresh simulator
+  boot.
+
 ## Next milestone
 
 The primary intro freeze is fixed on macOS and iPhone Simulator. Remaining:
-1. Verify iPad Simulator (same code path; boot + playthrough check).
+1. Verify the iPad native-mode fix (fullscreen window, correct rendering,
+   intro → gameplay playthrough).
 2. Confirm audible audio output (host AI buffer / speaker check) — the HLE
    backend processes tasks, but an audible proof on speakers or a device is
    still open.

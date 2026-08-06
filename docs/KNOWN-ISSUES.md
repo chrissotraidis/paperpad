@@ -176,6 +176,17 @@ Updated 2026-08-05 23:55.
    renders correctly but soft. `resize()` does not appear to apply native
    scale on iOS. Cosmetic; verify after the boot-stall fix.
 
+2b. **iPad ran in iPhone-compatibility mode (FIXED 2026-08-06)** — the app
+    built with `UIDeviceFamily=[1]` (iPhone-only), so iPadOS launched it in
+    compatibility mode: an iPhone-sized 667×375 window centered in the iPad
+    screen (with the floating "2x" control), and the game rendered
+    zoomed/cropped inside it. Root cause: CMake's iOS target defaulted the
+    device family to 1; `LSRequiresIPhoneOS` was also set. Fixed by removing
+    `LSRequiresIPhoneOS` from `Info.plist.in` and setting
+    `XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"` on the PaperPad target
+    (commit `eca833c`). Window diagnostics now log
+    `UIScreen.bounds/currentMode/nativeBounds` to catch regressions.
+
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG
    evidence shows the game content bottom/right-anchored with black elsewhere.

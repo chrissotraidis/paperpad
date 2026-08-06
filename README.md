@@ -34,12 +34,15 @@ ROM and asset boundary notes.
 
 ## Status
 
-- **macOS**: boots and plays Paper Mario's opening scene at 50-60fps with
-  keyboard controls. Evidence in `docs/evidence/`.
-- **iPhone / iPad Simulator**: builds, installs, launches, and renders under
-  Metal with the Paper Mario touch overlay. A boot-stage audio RSP stall is
-  the current blocker to gameplay; see `docs/KNOWN-ISSUES.md` and
-  `docs/HANDOFF.md` for the full picture.
+- **macOS**: plays through the intro, opening narration, and into Toad Town
+  gameplay at ~60fps with keyboard controls; HLE audio backend (no RSP
+  flood). Evidence in `docs/evidence/`.
+- **iPhone Simulator**: same progression with the Paper Mario touch overlay
+  (stick, D-pad, A/B/Z, C-buttons, L/R, START); verified stable 10+ minutes.
+- **iPad Simulator**: runs the intro with the touch overlay; a native-mode
+  fix (device family 1,2) is built — see `docs/STATUS.md` for the current
+  target-by-target status, `docs/KNOWN-ISSUES.md` for known issues, and
+  `docs/HANDOFF.md` for the handoff.
 - Physical-device signing remains an external boundary (no signing identity
   or device in this environment).
 
