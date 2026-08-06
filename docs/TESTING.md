@@ -31,6 +31,8 @@ logs, screenshots, gameplay checks, and outcome.
 | 2026-08-06 02:0x | iPad Pro 11" (M4) Sim | settings sheet build (volume/resolution/aspect/layout) | builds and launches clean; the C bridge (PaperPad_SetAudioVolume/SetGraphicsConfig) applies saved settings at startup |
 | 2026-08-06 02:0x | iPad Pro 11" (M4) Sim | agent-driven playthrough via Simulator hardware-keyboard forwarding (osascript key codes; Return=START, Z=A) | **full flow verified**: title screen -> storybook -> name entry (File 1 "First Play" created) -> file select -> "Start Game with File 1?" -> **Mario's House gameplay** ("Mail call!" dialogue advancing; health t=690+ at 60fps). Evidence: `docs/evidence/ipad-fileselect.jpg`, `docs/evidence/ipad-gameplay-marios-house.jpg` |
 | 2026-08-06 02:1x | iPad Pro 11" (M4) Sim | audio output probe (SDL queue size added to health log) | `queued=2240..4704` bytes every tick — HLE audio mix reaches the SDL device queue (end-to-end audio path confirmed) |
+| 2026-08-06 04:0x | iPad Pro 11" (M4) Sim | video capture + frame analysis (brightness at 30fps sampling) | **screen flashing reproduced and root-caused**: 253 full/partial alternations per 32s during the storybook. The present created between Paper Mario's two gfx tasks (background + main) drew the half-built starfield. |
+| 2026-08-06 04:5x | iPad Pro 11" (M4) Sim | fix: present waits for the frame's main task (odd workload id + early notify + 16ms bound); runtime presents at the game's frame cadence | **flashing eliminated**: 4 changes/55s (all intended storybook page transitions), gfx steady 60fps, no pipeline stall. |
 
 ## Crash-log capture
 

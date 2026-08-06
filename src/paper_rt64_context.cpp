@@ -303,6 +303,29 @@ namespace {
         }
 
         void send_dl(const OSTask* task) override {
+            static const bool s_dlhash = [](){ const char* v = std::getenv("PAPERPAD_DL_HASH"); return v != nullptr && v[0] != '0'; }();
+            if (s_dlhash) {
+                uint32_t ptr = task->t.data_ptr & 0x3FFFFFF;
+                uint32_t h = 2166136261u;
+                for (int i = 0; i < 64; i++) {
+                    uint8_t b = reinterpret_cast<uint8_t*>(app->core.RDRAM)[ptr + i];
+                    h ^= b;
+                    h *= 16777619u;
+                }
+                const char* v = std::getenv("PAPERPAD_DL_DUMP");
+                if (v != nullptr && v[0] != '0') {
+                    fprintf(stderr, "[dl] ptr=0x%X hash=%08X words:", ptr, h);
+                    for (int i = 0; i < 24; i++) {
+                        uint32_t word;
+                        std::memcpy(&word, app->core.RDRAM + ptr + i * 4, 4);
+                        fprintf(stderr, " %08X", word);
+                    }
+                    fprintf(stderr, "\n");
+                } else {
+                    fprintf(stderr, "[dl] ptr=0x%X hash=%08X\n", ptr, h);
+                }
+                fflush(stderr);
+            }
             app->state->rsp->reset();
             app->interpreter->loadUCodeGBI(task->t.ucode & 0x3FFFFFF, task->t.ucode_data & 0x3FFFFFF, true);
             app->processDisplayLists(app->core.RDRAM, task->t.data_ptr & 0x3FFFFFF, 0, true);
@@ -340,14 +363,38 @@ namespace {
                 res ? (int)res->userConfig.aspectRatio : -1,
                 (int)app->userConfig.resolution,
                 (double)app->userConfig.resolutionMultiplier);
+            std::fprintf(stderr,
+                "[render] refreshRate=%d targetRate=%u viOriginalRate=%u swapRate=%u\n",
+                (int)app->userConfig.refreshRate,
+                res ? res->targetRate : 0u,
+                res ? res->viOriginalRate : 0u,
+                res ? res->swapChainRate : 0u);
             RT64::VI vi = app->core.decodeVI();
             hlslpp::uint2 fb = vi.fbSize();
             std::fprintf(stderr,
-                "[render] vi width=%u fbSize=%ux%u xScale=%.3f yScale=%.3f hStart=%d-%d vStart=%d-%d\n",
+                "[render] vi width=%u fbSize=%ux%u origin=0x%X xScale=%.3f yScale=%.3f hStart=%d-%d vStart=%d-%d\n",
                 vi.width, (unsigned)fb.x, (unsigned)fb.y,
+                vi.origin,
                 (double)vi.xScaleFloat(), (double)vi.yScaleFloat(),
                 vi.hRegion.hStart, vi.hRegion.hEnd,
                 vi.vRegion.vStart, vi.vRegion.vEnd);
+            // Fast origin burst: catches VI-buffer alternation (double
+            // buffering) that would explain full/partial frame flashing.
+            // Written to a file to avoid interleaving with stderr.
+            static FILE* burst_f = [] {
+                const char* p = std::getenv("PAPERPAD_ORIGIN_BURST");
+                FILE* f = p != nullptr && p[0] != '0'
+                    ? std::fopen("origin_burst.txt", "w")
+                    : nullptr;
+                return f;
+            }();
+            if (burst_f != nullptr) {
+                for (int i = 0; i < 40; i++) {
+                    std::fprintf(burst_f, "0x%X\n", (unsigned)app->core.decodeVI().origin);
+                    std::fflush(burst_f);
+                    std::this_thread::sleep_for(std::chrono::milliseconds(25));
+                }
+            }
         }
 
         uint32_t get_display_framerate() const override {

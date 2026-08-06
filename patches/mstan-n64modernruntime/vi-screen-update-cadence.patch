@@ -1,0 +1,115 @@
+diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
+index a101a5d..ecd461a 100644
+--- a/ultramodern/src/events.cpp
++++ b/ultramodern/src/events.cpp
+@@ -59,15 +59,15 @@ struct UpdateConfigAction {
+ 
+ using Action = std::variant<SpTaskAction, ScreenUpdateAction, UpdateConfigAction>;
+ 
+-struct ViState {
+-    const OSViMode* mode;
+-    PTR(void) framebuffer;
+-    PTR(OSMesg) mq;
+-    OSMesg msg;
+-    uint32_t state;
+-    uint32_t control;
+-    int retrace_count = 1;
+-};
++    struct ViState {
++        const OSViMode* mode;
++        PTR(void) framebuffer;
++        PTR(OSMesg) mq;
++        OSMesg msg;
++        uint32_t state;
++        uint32_t control;
++        int retrace_count = 1;
++    };
+ 
+ #define VI_STATE_BLACK 0x20
+ #define VI_STATE_REPEATLINE 0x40
+@@ -875,22 +875,35 @@ void vi_thread_func() {
+             }
+         }
+ 
+-        // Hand the current VI register state to the graphics thread as a screen update.
+-        // Issuing it before update_vi() matches presenting the previous frame once its
+-        // scanout has finished.
+-        events_context.action_queue.enqueue(ScreenUpdateAction{ events_context.vi.regs });
++        // Decide whether this host tick is a guest VI retrace (the game's own
++        // frame boundary). The guest VI event fires every retrace_count ticks,
++        // so a 30fps game gets one retrace every other 60Hz tick.
++        bool is_guest_retrace = true;
++        if (ultramodern::is_game_started()) {
++            remaining_retraces--;
++            is_guest_retrace = (remaining_retraces == 0);
++        }
++
++        // Hand the current VI register state to the graphics thread as a screen
++        // update, but only at the game's own frame cadence. Presenting at a
++        // fixed host 60Hz against a 30fps frame that Paper Mario builds with
++        // multiple gfx tasks shows the half-built framebuffer (the visible
++        // full/partial flashing).
++        if (is_guest_retrace) {
++            // Issuing it before update_vi() matches presenting the previous
++            // frame once its scanout has finished.
++            events_context.action_queue.enqueue(ScreenUpdateAction{ events_context.vi.regs });
++        }
+ 
+         // Advance the VI registers and flip to the next field/state.
+         events_context.vi.update_vi();
+ 
+         // If the game has started, handle sending VI and AI events.
+         if (ultramodern::is_game_started()) {
+-            remaining_retraces--;
+-
+             uint8_t* rdram = events_context.rdram;
+             std::lock_guard lock{ events_context.message_mutex };
+             ViState* cur_state = events_context.vi.get_cur_state();
+-            if (remaining_retraces == 0) {
++            if (is_guest_retrace) {
+                 if (cur_state->mq != NULLPTR) {
+                     // VI retrace is COALESCIBLE: droppable on a full guest queue.
+                     // This is what stops a 60Hz retrace flood from starving the
+@@ -1157,6 +1170,14 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+                         std::memory_order_relaxed);
+                     g_current_dl_entry_seq.fetch_add(1, std::memory_order_release);
+                 }
++                {
++                    struct timespec tsx; clock_gettime(CLOCK_MONOTONIC, &tsx);
++                    static std::atomic<uint64_t> dl_count{0};
++                    if ((dl_count.fetch_add(1) % 300) == 0) {
++                        fprintf(stderr, "[gfx] send_dl count=%llu t=%lld.%03ld\n",
++                            (unsigned long long)dl_count.load(), (long long)tsx.tv_sec, tsx.tv_nsec/1000000);
++                    }
++                }
+                 renderer_context->send_dl(&task_action->task);
+ #ifdef N64_COSIM
+                 if (task_action->cosim_gfx_seq != 0) {
+@@ -1187,6 +1208,27 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+                 // printf("Renderer ProcessDList time: %d us\n", static_cast<u32>(std::chrono::duration_cast<std::chrono::microseconds>(renderer_end - renderer_start).count()));
+             }
+             else if (const auto* screen_update_action = std::get_if<ScreenUpdateAction>(&action)) {
++                // Paper Mario builds one frame with multiple gfx tasks (a
++                // background task then the 3D/text task). The VI retrace can
++                // fire between the task enqueues, so by the time we reach the
++                // screen update the frame's remaining tasks are usually
++                // already queued (the game enqueues the next task as soon as
++                // the previous one's RDP completes). Drain any pending gfx
++                // tasks before presenting so the presented framebuffer is a
++                // complete frame instead of the half-built background - the
++                // visible full/partial flashing.
++                Action pending;
++                while (events_context.action_queue.try_dequeue(pending)) {
++                    if (const auto* ptask = std::get_if<SpTaskAction>(&pending)) {
++#ifndef N64_COSIM
++                        sp_complete(ptask->task.t.type);
++#endif
++                        renderer_context->send_dl(&ptask->task);
++#ifndef N64_COSIM
++                        dp_complete(ptask->task.t.type);
++#endif
++                    }
++                }
+                 events_context.vi.update_screen_regs = screen_update_action->regs;
+                 renderer_context->update_screen();
+                 display_refresh_rate = renderer_context->get_display_framerate();

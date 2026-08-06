@@ -1,0 +1,94 @@
+diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
+index 63b58fe..be76795 100644
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -202,10 +202,57 @@ namespace RT64 {
+                     }
+                 }
+ 
+-                if (presentFb->interpolationEnabled) {
++                // Only take the lock-free interpolated path when there are
++                // actually multiple display frames to present (display rate
++                // above the game rate). When the present runs at the game's
++                // own cadence (count == 1), the framebuffer may still be
++                // mid-build: Paper Mario draws one frame with multiple gfx
++                // tasks (e.g. a background task then a 3D/text task), and
++                // presenting without waiting for the workload shows the
++                // half-built frame - the visible full/partial flashing on
++                // 30fps-game/60Hz-display setups. Always wait for the
++                // workload to finish in that case.
++                if (presentFb->interpolationEnabled && (frameCounters.count > 1)) {
+                     framesToPresent = frameCounters.count;
+                 }
+                 else {
++                    // Paper Mario builds one frame with two gfx tasks (a
++                    // background task that also renders to a temp buffer, then
++                    // the main task). A present created between the tasks only
++                    // covers the background workload and would show the
++                    // half-built starfield frame (the full/partial flashing).
++                    // The frame's main task waits on THIS present's id, so we
++                    // notify it early and then wait for the main task too.
++                    if ((present.workloadId & 1) != 0) {
++                        notifyPresentId(present);
++                        // Wait for the frame's main task (workloadId+1) with a
++                        // short timeout: the game enqueues it right after the
++                        // background task's RDP completes, but a slow render
++                        // must never deadlock the present pipeline.
++                        {
++                            std::unique_lock<std::mutex> wlLock(ext.workloadQueue->workloadIdMutex);
++                            ext.workloadQueue->workloadIdCondition.wait_for(
++                                wlLock, std::chrono::milliseconds(16), [&]() {
++                                    return (present.workloadId + 1 <= ext.workloadQueue->workloadId) ||
++                                           !ext.workloadQueue->threadsRunning;
++                                });
++                        }
++                    }
++                    // Paper Mario builds one frame with multiple gfx tasks
++                    // (e.g. a background task then a 3D/text task). Wait for
++                    // every workload submitted up to this present to finish
++                    // rendering, so the presented framebuffer is complete.
++                    // Presenting while the frame is half-built shows the
++                    // visible full/partial flashing (30fps game vs 60Hz
++                    // present on the iPad).
++                    ext.workloadQueue->waitForWorkloadId(present.workloadId);
++                    static const bool s_pwlog = [](){ const char* v = std::getenv("RT64_PRESENT_LOG"); return v != nullptr && v[0] != '0'; }();
++                    if (s_pwlog) {
++                        fprintf(stderr, "[present] workloadId=%llu fb=0x%08X\n",
++                                (unsigned long long)present.workloadId,
++                                present.screenVI.fbAddress());
++                        fflush(stderr);
++                    }
+                     lockedWorkloadMutex = true;
+                     ext.sharedResources->workloadMutex.lock();
+                 }
+@@ -213,6 +260,23 @@ namespace RT64 {
+                 RenderTargetKey colorTargetKey(presentFb->addressStart, presentFb->width, presentFb->siz, Framebuffer::Type::Color);
+                 colorTarget = &targetManager.get(colorTargetKey, true);
+                 if (!colorTarget->isEmpty()) {
++                    static const bool s_ctlog = [](){ const char* v = std::getenv("RT64_CT_LOG"); return v != nullptr && v[0] != '0'; }();
++                    if (s_ctlog) {
++                        const auto& sqr = ext.sharedResources->resolutionScale;
++                        fprintf(stderr, "[target] fb=0x%08X target=%ux%u rs=%.1f,%.1f sharedRs=%.1f,%.1f swH=%u curWl=%llu presWl=%llu\n",
++                                presentFb->addressStart,
++                                colorTarget->width, colorTarget->height,
++                                (double)colorTarget->resolutionScale.x, (double)colorTarget->resolutionScale.y,
++                                (double)sqr.x, (double)sqr.y,
++                                ext.sharedResources->swapChainHeight,
++                                (unsigned long long)ext.workloadQueue->workloadId,
++                                (unsigned long long)present.workloadId);
++                        fprintf(stderr, "[target] fb lastWrite type=%d rect=%d,%d,%d,%d\n",
++                                (int)presentFb->lastWriteType,
++                                presentFb->lastWriteRect.ulx, presentFb->lastWriteRect.uly,
++                                presentFb->lastWriteRect.lrx, presentFb->lastWriteRect.lry);
++                        fflush(stderr);
++                    }
+                     // If a depth framebuffer is about to be shown, convert it to color.
+                     if (presentFb->isLastWriteDifferent(Framebuffer::Type::Color)) {
+                         RenderTargetKey otherColorTargetKey(presentFb->addressStart, presentFb->width, presentFb->siz, presentFb->lastWriteType);
+@@ -595,4 +659,4 @@ namespace RT64 {
+             ext.presentGraphicsWorker->wait();
+         }
+     }
+-};
+\ No newline at end of file
++};

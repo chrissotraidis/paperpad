@@ -213,6 +213,24 @@ Updated 2026-08-05 23:55.
    saved preference; the render now runs at 7x (2240x1680) with steady 60fps.
    The settings sheet offers Auto/2x resolution and Original/Expand aspect.
 
+5. **Screen flashed full/partial frames during 30fps cutscenes (FIXED
+   2026-08-06)** — the visible image alternated between the complete scene
+   and the half-built background (e.g. the storybook page vs the bare
+   starfield) at ~30Hz. Root cause: Paper Mario builds each frame with two
+   gfx tasks (a background task that also renders to a temp buffer, then the
+   main task), and the VI retrace can fire between them. The RT64 present
+   created mid-frame covered only the background workload and drew the
+   half-built target. Fix (commit pending): the present, when its workload id
+   is odd (mid-frame), notifies its present id early (so the frame's main
+   task can proceed) and waits up to 16ms for the main task's workload before
+   drawing. Also, the runtime's VI thread only emits screen updates at the
+   game's own frame cadence (retrace-aligned) instead of a fixed 60Hz.
+   Patches: `patches/mstan-rt64/present-wait-workload.patch`,
+   `patches/mstan-n64modernruntime/vi-screen-update-cadence.patch`. Verified:
+   frame-brightness analysis dropped from 253 changes/32s to 4 changes/55s
+   (the remaining are intended storybook page transitions); gfx stays at
+   60fps with no pipeline stall.
+
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG
    evidence shows the game content bottom/right-anchored with black elsewhere.
