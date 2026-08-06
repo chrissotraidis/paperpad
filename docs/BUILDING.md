@@ -108,3 +108,16 @@ Produces `ver/us/build/papermario.elf` (AOT metadata) and the matching ROM.
 ## Phase 4: iOS Simulator core + app
 
 ## Phase 5: iOS device (unsigned) + packaging
+
+## Pushing to GitHub (2026-08-06)
+
+The Homebrew git 2.36.1 on this machine fails to push to GitHub
+("RPC failed; HTTP 400" / "remote end hung up" even for tiny commits — the
+GitHub-Babel edge rejects its sideband). Use the newer Apple git instead:
+
+```sh
+/usr/bin/git push origin main
+```
+
+Also keep single-push packs small (the repo has seen silent HTTP 400 for
+packs over ~1MB); split large commits and push them separately.
