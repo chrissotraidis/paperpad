@@ -50,13 +50,36 @@ Updated 2026-08-05 23:55.
    with `extra_indirect_branch_targets` including `0x1C84` and `0x02B0` (and
    verify the `$29` setup path) so the recompiled ucode could replace HLE.
 
-2. **Teardown autorelease crash** — RT64 Workload/Present worker threads can
-   crash in `objc_autoreleasePoolPop` when the process exits. This is a
-   Metal-cpp lifecycle issue in the RT64 worker threads during Application
-   teardown; gameplay is unaffected. Reproduced again 2026-08-05 18:15:21
-   (`logs/crashes/PaperPad-2026-08-05-181521.ips`, faultingThread 24).
-   Fix path: ensure per-thread autorelease pools are balanced before RT64
-   worker loops exit.
+2. **Teardown autorelease crash (FIXED 2026-08-06)** — RT64 Workload worker
+   threads crashed in `objc_autoreleasePoolPop` → `objc_release` on dangling
+   pointers when the process exited (and, with per-frame pools added, during
+   normal operation). Root cause: several Metal-cpp objects were over-released
+   — the release counts went through the caller's autorelease pool as well as
+   an explicit `release()`, leaving a dangling pointer that crashed the next
+   pool pop. Identified with `NSZombieEnabled`:
+   - `AGXG13GFamilyBlitContext` (blit encoder): `checkActiveBlitEncoder`
+     created the encoder (autoreleased) without the `retain()` that
+     `checkActiveRenderEncoder`/`checkActiveComputeEncoder` use, then
+     `endActiveBlitEncoder` released it.
+   - `AGXG13GFamilyComputeContext` (resolve compute encoder): same missing
+     retain in `checkActiveResolveTextureComputeEncoder`.
+   - `MTLTextureDescriptorInternal`: `MetalBufferFormattedView` released a
+     descriptor from the autoreleased class factory `textureBufferDescriptor`.
+   - `__NSCFString`: `MetalShader::~MetalShader` released `functionName`
+     (from autoreleased `NS::String::string`).
+   Also fixed: `MetalCommandList::commit()` no longer releases the unowned
+   `commandBufferWithUnretainedReferences()` buffer (the frame's autorelease
+   pool owns it). Each RT64 worker thread (Workload, Idle, Present, Buffer,
+   Shader, Stream, Texture) now runs inside a thread-wide autorelease pool
+   marker that is popped at loop end, and `Application::~Application`
+   stops/joins the workload and present queues before any render objects are
+   destroyed (they were previously torn down in reverse member order while
+   the workers could still be encoding a frame).
+   Patch: `patches/mstan-rt64/metal-worker-autorelease-and-overrelease-fixes.patch`.
+   Verified 2026-08-06: 8 consecutive macOS SIGTERM cycles + a 110s run all
+   exit cleanly with zero crash reports; iPad Simulator launch → 25s run →
+   terminate produces no crash either. The game renders normally (title
+   screen and storybook verified on macOS and iPad).
 
 3. **Background launch quirk** — launching the raw binary from a terminal can
    trigger SDL_QUIT when the session's process group ends. Launching via

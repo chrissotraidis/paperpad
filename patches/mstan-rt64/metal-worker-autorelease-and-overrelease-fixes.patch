@@ -1,0 +1,754 @@
+diff --git a/src/common/rt64_thread.cpp b/src/common/rt64_thread.cpp
+index c4b080b..4ca372b 100644
+--- a/src/common/rt64_thread.cpp
++++ b/src/common/rt64_thread.cpp
+@@ -14,6 +14,13 @@
+ #   include <pthread.h>
+ #endif
+ 
++#if defined(__APPLE__)
++// objc_autoreleasePoolPush/Pop are exported by libobjc (used by ARC) but not
++// exposed to plain C++ translation units, so declare them here.
++extern "C" void *objc_autoreleasePoolPush(void);
++extern "C" void objc_autoreleasePoolPop(void *ctxt);
++#endif
++
+ namespace RT64 {
+ #   if defined(_WIN32)
+     static int toWindowsPriority(Thread::Priority priority) {
+@@ -75,4 +82,14 @@ namespace RT64 {
+         std::this_thread::sleep_for(std::chrono::milliseconds(millis));
+ #   endif
+     }
++
++#if defined(__APPLE__)
++    AppleAutoreleasePoolMarker::AppleAutoreleasePoolMarker() {
++        poolToken = objc_autoreleasePoolPush();
++    }
++
++    AppleAutoreleasePoolMarker::~AppleAutoreleasePoolMarker() {
++        objc_autoreleasePoolPop(poolToken);
++    }
++#endif
+ };
+diff --git a/src/common/rt64_thread.h b/src/common/rt64_thread.h
+index e7d8c5f..556cf72 100644
+--- a/src/common/rt64_thread.h
++++ b/src/common/rt64_thread.h
+@@ -22,4 +22,22 @@ namespace RT64 {
+         static void setCurrentThreadPriority(Priority priority);
+         static void sleepMilliseconds(uint32_t millis);
+     };
+-};
+\ No newline at end of file
++
++#if defined(__APPLE__)
++    // Thread-wide autorelease pool marker for RT64 worker threads. Metal-cpp
++    // objects created on a worker thread (command buffers, labels, render
++    // pass descriptors) are autoreleased into whatever pool is active, and
++    // some land in an outer pool that is never popped during the session.
++    // Popping this marker when the thread's run loop ends releases everything
++    // while the renderer is still alive. Without it, pthread-exit TLS cleanup
++    // pops the leftover pool AFTER other threads have started tearing down
++    // Metal objects, crashing on dangling pointers
++    // (objc_autoreleasePoolPop -> objc_release at shutdown).
++    class AppleAutoreleasePoolMarker {
++        void *poolToken;
++    public:
++        AppleAutoreleasePoolMarker();
++        ~AppleAutoreleasePoolMarker();
++    };
++#endif
++};
+diff --git a/src/hle/rt64_application.cpp b/src/hle/rt64_application.cpp
+index 3e00540..4808e4f 100644
+--- a/src/hle/rt64_application.cpp
++++ b/src/hle/rt64_application.cpp
+@@ -412,7 +412,22 @@ namespace RT64 {
+         return SetupResult::Success;
+     }
+ 
+-    Application::~Application() {}
++    Application::~Application() {
++        // Stop the render worker threads before any render objects are
++        // destroyed. The members below are torn down in reverse declaration
++        // order, so renderInterface/device/swapChain would otherwise be
++        // destroyed while workloadQueue/presentQueue are still running; the
++        // workers could then encode a frame against Metal objects that are
++        // already being freed, crashing when the frame's autorelease pool is
++        // popped (objc_autoreleasePoolPop -> objc_release on a dangling
++        // pointer).
++        if (presentQueue != nullptr) {
++            presentQueue->stop();
++        }
++        if (workloadQueue != nullptr) {
++            workloadQueue->stop();
++        }
++    }
+ 
+     void Application::processDisplayLists(uint8_t *memory, uint32_t dlStartAddress, uint32_t dlEndAddress, bool isHLE) {
+         if (state->debuggerInspector.paused) {
+diff --git a/src/hle/rt64_present_queue.cpp b/src/hle/rt64_present_queue.cpp
+index 63b58fe..8494054 100644
+--- a/src/hle/rt64_present_queue.cpp
++++ b/src/hle/rt64_present_queue.cpp
+@@ -17,12 +17,17 @@ namespace RT64 {
+     }
+ 
+     PresentQueue::~PresentQueue() {
++        stop();
++    }
++
++    void PresentQueue::stop() {
+         presentThreadRunning = false;
+         cursorCondition.notify_all();
+ 
+         if (presentThread != nullptr) {
+             presentThread->join();
+             delete presentThread;
++            presentThread = nullptr;
+         }
+ 
+         presentIdCondition.notify_all();
+@@ -202,10 +207,57 @@ namespace RT64 {
+                     }
+                 }
+ 
+-                if (presentFb->interpolationEnabled) {
++                // Only take the lock-free interpolated path when there are
++                // actually multiple display frames to present (display rate
++                // above the game rate). When the present runs at the game's
++                // own cadence (count == 1), the framebuffer may still be
++                // mid-build: Paper Mario draws one frame with multiple gfx
++                // tasks (e.g. a background task then a 3D/text task), and
++                // presenting without waiting for the workload shows the
++                // half-built frame - the visible full/partial flashing on
++                // 30fps-game/60Hz-display setups. Always wait for the
++                // workload to finish in that case.
++                if (presentFb->interpolationEnabled && (frameCounters.count > 1)) {
+                     framesToPresent = frameCounters.count;
+                 }
+                 else {
++                    // Paper Mario builds one frame with two gfx tasks (a
++                    // background task that also renders to a temp buffer, then
++                    // the main task). A present created between the tasks only
++                    // covers the background workload and would show the
++                    // half-built starfield frame (the full/partial flashing).
++                    // The frame's main task waits on THIS present's id, so we
++                    // notify it early and then wait for the main task too.
++                    if ((present.workloadId & 1) != 0) {
++                        notifyPresentId(present);
++                        // Wait for the frame's main task (workloadId+1) with a
++                        // short timeout: the game enqueues it right after the
++                        // background task's RDP completes, but a slow render
++                        // must never deadlock the present pipeline.
++                        {
++                            std::unique_lock<std::mutex> wlLock(ext.workloadQueue->workloadIdMutex);
++                            ext.workloadQueue->workloadIdCondition.wait_for(
++                                wlLock, std::chrono::milliseconds(16), [&]() {
++                                    return (present.workloadId + 1 <= ext.workloadQueue->workloadId) ||
++                                           !ext.workloadQueue->threadsRunning;
++                                });
++                        }
++                    }
++                    // Paper Mario builds one frame with multiple gfx tasks
++                    // (e.g. a background task then a 3D/text task). Wait for
++                    // every workload submitted up to this present to finish
++                    // rendering, so the presented framebuffer is complete.
++                    // Presenting while the frame is half-built shows the
++                    // visible full/partial flashing (30fps game vs 60Hz
++                    // present on the iPad).
++                    ext.workloadQueue->waitForWorkloadId(present.workloadId);
++                    static const bool s_pwlog = [](){ const char* v = std::getenv("RT64_PRESENT_LOG"); return v != nullptr && v[0] != '0'; }();
++                    if (s_pwlog) {
++                        fprintf(stderr, "[present] workloadId=%llu fb=0x%08X\n",
++                                (unsigned long long)present.workloadId,
++                                present.screenVI.fbAddress());
++                        fflush(stderr);
++                    }
+                     lockedWorkloadMutex = true;
+                     ext.sharedResources->workloadMutex.lock();
+                 }
+@@ -213,6 +265,23 @@ namespace RT64 {
+                 RenderTargetKey colorTargetKey(presentFb->addressStart, presentFb->width, presentFb->siz, Framebuffer::Type::Color);
+                 colorTarget = &targetManager.get(colorTargetKey, true);
+                 if (!colorTarget->isEmpty()) {
++                    static const bool s_ctlog = [](){ const char* v = std::getenv("RT64_CT_LOG"); return v != nullptr && v[0] != '0'; }();
++                    if (s_ctlog) {
++                        const auto& sqr = ext.sharedResources->resolutionScale;
++                        fprintf(stderr, "[target] fb=0x%08X target=%ux%u rs=%.1f,%.1f sharedRs=%.1f,%.1f swH=%u curWl=%llu presWl=%llu\n",
++                                presentFb->addressStart,
++                                colorTarget->width, colorTarget->height,
++                                (double)colorTarget->resolutionScale.x, (double)colorTarget->resolutionScale.y,
++                                (double)sqr.x, (double)sqr.y,
++                                ext.sharedResources->swapChainHeight,
++                                (unsigned long long)ext.workloadQueue->workloadId,
++                                (unsigned long long)present.workloadId);
++                        fprintf(stderr, "[target] fb lastWrite type=%d rect=%d,%d,%d,%d\n",
++                                (int)presentFb->lastWriteType,
++                                presentFb->lastWriteRect.ulx, presentFb->lastWriteRect.uly,
++                                presentFb->lastWriteRect.lrx, presentFb->lastWriteRect.lry);
++                        fflush(stderr);
++                    }
+                     // If a depth framebuffer is about to be shown, convert it to color.
+                     if (presentFb->isLastWriteDifferent(Framebuffer::Type::Color)) {
+                         RenderTargetKey otherColorTargetKey(presentFb->addressStart, presentFb->width, presentFb->siz, presentFb->lastWriteType);
+@@ -490,6 +559,10 @@ namespace RT64 {
+     void PresentQueue::threadLoop() {
+         Thread::setCurrentThreadName("RT64 Present");
+ 
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
++
+         // Create the semaphores used by the swap chains.
+         acquiredSemaphore = ext.device->createCommandSemaphore();
+         drawSemaphore = ext.device->createCommandSemaphore();
+@@ -595,4 +668,4 @@ namespace RT64 {
+             ext.presentGraphicsWorker->wait();
+         }
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/src/hle/rt64_present_queue.h b/src/hle/rt64_present_queue.h
+index 7bec992..3b11871 100644
+--- a/src/hle/rt64_present_queue.h
++++ b/src/hle/rt64_present_queue.h
+@@ -67,6 +67,9 @@ namespace RT64 {
+         void waitForIdle();
+         void waitForPresentId(uint64_t waitId);
+         void setup(const External &ext);
++        // Stop the present thread before any render objects are destroyed;
++        // see WorkloadQueue::stop().
++        void stop();
+         void threadPresent(const Present &present, bool &swapChainValid);
+         void skipInterpolation();
+         void notifyPresentId(const Present &present);
+@@ -74,4 +77,4 @@ namespace RT64 {
+         void threadAdvanceBarrier();
+         void threadLoop();
+     };
+-};
+\ No newline at end of file
++};
+diff --git a/src/hle/rt64_workload_queue.cpp b/src/hle/rt64_workload_queue.cpp
+index 08faa8f..4aa47e8 100644
+--- a/src/hle/rt64_workload_queue.cpp
++++ b/src/hle/rt64_workload_queue.cpp
+@@ -4,6 +4,14 @@
+ 
+ #include "rt64_workload_queue.h"
+ 
++#if defined(__APPLE__)
++#include <dlfcn.h>
++#include <cstdlib>
++#include <cstdio>
++extern "C" void *objc_autoreleasePoolPush(void);
++extern "C" void objc_autoreleasePoolPop(void *ctxt);
++#endif
++
+ #include "common/rt64_thread.h"
+ 
+ #include "rt64_present_queue.h"
+@@ -21,6 +29,10 @@ namespace RT64 {
+     }
+ 
+     WorkloadQueue::~WorkloadQueue() {
++        stop();
++    }
++
++    void WorkloadQueue::stop() {
+         threadsRunning = false;
+         cursorCondition.notify_all();
+         idleCondition.notify_all();
+@@ -28,11 +40,13 @@ namespace RT64 {
+         if (renderThread != nullptr) {
+             renderThread->join();
+             delete renderThread;
++            renderThread = nullptr;
+         }
+ 
+         if (idleThread != nullptr) {
+             idleThread->join();
+             delete idleThread;
++            idleThread = nullptr;
+         }
+ 
+         workloadIdCondition.notify_all();
+@@ -291,6 +305,15 @@ namespace RT64 {
+         float deltaTimeMs, RenderTargetKey overrideTargetKey, int32_t overrideTargetFbPairIndex, RenderTarget *overrideTarget,
+         uint32_t overrideTargetModifier, bool uploadVelocity, bool uploadExtras, bool interpolateTiles)
+     {
++#if defined(__APPLE__)
++        // Per-frame autorelease pool: Metal-cpp objects created while encoding
++        // this frame (command buffers, labels, render pass descriptors) are
++        // autoreleased and must be released every frame, not once at thread
++        // exit (where the accumulated pool can hold dangling pointers after
++        // teardown begins). The thread-wide marker in renderThreadLoop is the
++        // safety net for anything escaping this scope.
++        void *framePool = objc_autoreleasePoolPush();
++#endif
+ #   if ENABLE_HIGH_RESOLUTION_RENDERER
+         std::scoped_lock<std::mutex> managerLock(ext.sharedResources->workloadMutex);
+         FramebufferManager &fbManager = ext.sharedResources->framebufferManager;
+@@ -668,6 +691,14 @@ namespace RT64 {
+             for (uint32_t f = 0; f < fbPairCount; f++) {
+                 const FramebufferPair &fbPair = workload.fbPairs[f];
+                 if (getTargetsFromPair(f)) {
++                    static const bool s_fblog = [](){ const char* v = std::getenv("RT64_FBPAIR_LOG"); return v != nullptr && v[0] != '0'; }();
++                    if (s_fblog) {
++                        const auto &ci = fbPair.colorImage;
++                        fprintf(stderr, "[fbpair] workloadId=%llu colorImg=0x%08X w=%u h=%u\n",
++                                (unsigned long long)workload.workloadId,
++                                ci.address, ci.width, fbPair.drawColorRect.bottom(true));
++                        fflush(stderr);
++                    }
+                     RenderFramebufferStorage &fbStorage = renderFramebufferManager->get(fbKey, colorTarget, (depthTarget != nullptr) ? depthTarget : dummyDepthTarget.get());
+                     FramebufferRenderer::DrawParams drawParams;
+                     drawParams.worker = ext.workloadGraphicsWorker;
+@@ -903,6 +934,9 @@ namespace RT64 {
+         rendererProfiler.log();
+         rendererProfiler.reset();
+ #   endif
++#if defined(__APPLE__)
++        objc_autoreleasePoolPop(framePool);
++#endif
+     }
+ 
+     void WorkloadQueue::threadAdvanceBarrier() {
+@@ -922,6 +956,10 @@ namespace RT64 {
+     void WorkloadQueue::renderThreadLoop() {
+         Thread::setCurrentThreadName("RT64 Workload");
+ 
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
++
+         WorkloadConfiguration workloadConfig;
+         int64_t logicalTicks = 0;
+         int64_t displayTicks = 0;
+@@ -1215,8 +1253,11 @@ namespace RT64 {
+             }
+         }
+     }
+-    
++
+     void WorkloadQueue::idleThreadLoop() {
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+         // Beware traveler as you enter the zone of dirty driver hacks. Given N64 games are not exactly a demanding thing to render
+         // nowadays for modern GPUs and due to how the plugin's cooperative multiqueue system works, it's sometimes just not possible
+         // to keep the GPU busy at all times. It is often the case that the GPU might've already rendered all the frames it needed to
+diff --git a/src/hle/rt64_workload_queue.h b/src/hle/rt64_workload_queue.h
+index e9d7a02..6dd1da5 100644
+--- a/src/hle/rt64_workload_queue.h
++++ b/src/hle/rt64_workload_queue.h
+@@ -108,6 +108,13 @@ namespace RT64 {
+         void waitForWorkloadId(uint64_t waitId);
+         void setup(const External &ext);
+         void updateMultisampling();
++        // Stop both worker threads and wait for them to finish. Must be called
++        // BEFORE any render objects (device, swap chain, render interface) are
++        // destroyed; the members are torn down in reverse declaration order,
++        // so without this the worker threads can still encode a frame against
++        // Metal objects that are already being destroyed (a shutdown race that
++        // crashes in the frame's autorelease pool pop).
++        void stop();
+         void threadConfigurationUpdate(WorkloadConfiguration &workloadConfig);
+         void threadConfigurationValidate();
+         void threadRenderFrame(GameFrame &curFrame, const GameFrame &prevFrame, const WorkloadConfiguration &workloadConfig,
+@@ -120,4 +127,4 @@ namespace RT64 {
+         void renderThreadLoop();
+         void idleThreadLoop();
+     };
+-};
+\ No newline at end of file
++};
+diff --git a/src/metal/rt64_metal.cpp b/src/metal/rt64_metal.cpp
+index 0d88e46..7842488 100644
+--- a/src/metal/rt64_metal.cpp
++++ b/src/metal/rt64_metal.cpp
+@@ -1059,7 +1059,10 @@ namespace RT64 {
+         MTL::TextureDescriptor *descriptor = MTL::TextureDescriptor::textureBufferDescriptor(pixelFormat, width, options, usage);
+         this->texture = buffer->mtl->newTexture(descriptor, 0, bytesPerRow);
+ 
+-        descriptor->release();
++        // textureBufferDescriptor returns an autoreleased descriptor (class
++        // factory method); do NOT release it. Releasing an unowned object
++        // over-releases it and leaves a dangling pointer in the autorelease
++        // pool that crashes when the pool is popped.
+     }
+ 
+     MetalBufferFormattedView::~MetalBufferFormattedView() {
+@@ -1186,7 +1189,9 @@ namespace RT64 {
+     }
+ 
+     MetalShader::~MetalShader() {
+-        functionName->release();
++        // functionName comes from NS::String::string(), which returns an
++        // autoreleased string; do NOT release it here (releasing an unowned
++        // object leaves a dangling pointer in the autorelease pool).
+         library->release();
+     }
+ 
+@@ -1533,36 +1538,26 @@ namespace RT64 {
+         const auto &setLayoutBinding = setLayout->setBindings[indexBase];
+         const MTL::DataType dtype = mapDataType(setLayoutBinding.descriptorType);
+         MTL::Resource *nativeResource = nullptr;
++        MTL::SamplerState *nativeSampler = nullptr;
++        uint32_t nativeOffset = 0;
+         RenderDescriptorRangeType descriptorType = getDescriptorType(bindingIndex);
+ 
+-        if (dtype != MTL::DataTypeSampler) {
+-            if (resourceEntries[descriptorIndex].resource != nullptr) {
+-                resourceEntries[descriptorIndex].resource->release();
+-                resourceEntries[descriptorIndex].resource = nullptr;
+-            }
+-        }
+-
+         if (descriptor != nullptr) {
+             switch (dtype) {
+                 case MTL::DataTypeTexture: {
+                     const TextureDescriptor *textureDescriptor = static_cast<const TextureDescriptor *>(descriptor);
+                     nativeResource = textureDescriptor->texture;
+-                    MTL::Texture *nativeTexture = static_cast<MTL::Texture *>(nativeResource);
+-                    argumentBuffer.argumentEncoder->setTexture(nativeTexture, descriptorIndex - indexBase + bindingIndex);
+-                    nativeTexture->retain();
+                     break;
+                 }
+                 case MTL::DataTypePointer: {
+                     const BufferDescriptor *bufferDescriptor = static_cast<const BufferDescriptor *>(descriptor);
+                     nativeResource = bufferDescriptor->buffer;
+-                    MTL::Buffer *nativeBuffer = static_cast<MTL::Buffer *>(nativeResource);
+-                    argumentBuffer.argumentEncoder->setBuffer(nativeBuffer, bufferDescriptor->offset, descriptorIndex - indexBase + bindingIndex);
+-                    nativeBuffer->retain();
++                    nativeOffset = bufferDescriptor->offset;
+                     break;
+                 }
+                 case MTL::DataTypeSampler: {
+                     const SamplerDescriptor *samplerDescriptor = static_cast<const SamplerDescriptor *>(descriptor);
+-                    argumentBuffer.argumentEncoder->setSamplerState(samplerDescriptor->state, descriptorIndex - indexBase + bindingIndex);
++                    nativeSampler = samplerDescriptor->state;
+                     break;
+                 }
+                     
+@@ -1570,13 +1565,110 @@ namespace RT64 {
+                     assert(false && "Unsupported descriptor type.");
+             }
+         }
+-        
+-        if (argumentBuffer.mtl->storageMode() == MTL::StorageModeManaged) {
+-            argumentBuffer.mtl->didModifyRange(NS::Range(argumentBuffer.offset, argumentBuffer.mtl->length() - argumentBuffer.offset));
++
++        ResourceEntry &entry = resourceEntries[descriptorIndex];
++        if ((entry.resource == nativeResource) && (entry.sampler == nativeSampler) &&
++            (entry.offset == nativeOffset) && (entry.type == descriptorType)) {
++            return;
++        }
++
++        const bool resourceChanged = entry.resource != nativeResource;
++        if (resourceChanged && (entry.resource != nullptr)) {
++            entry.resource->release();
++        }
++
++        if (resourceChanged && (nativeResource != nullptr)) {
++            nativeResource->retain();
++        }
++
++        entry.resource = nativeResource;
++        entry.sampler = nativeSampler;
++        entry.offset = nativeOffset;
++        entry.type = descriptorType;
++        entry.dirty = true;
++        hasPendingDescriptors = true;
++    }
++
++    void MetalDescriptorSet::flushPendingDescriptors() {
++        if (!hasPendingDescriptors) {
++            return;
++        }
++
++        bool modified = false;
++        uint32_t descriptorIndex = 0;
++
++        while (descriptorIndex < resourceEntries.size()) {
++            if (!resourceEntries[descriptorIndex].dirty) {
++                descriptorIndex++;
++                continue;
++            }
++
++            const uint32_t indexBase = setLayout->descriptorIndexBases[descriptorIndex];
++            const uint32_t bindingIndex = setLayout->descriptorBindingIndices[descriptorIndex];
++            const MTL::DataType dtype = mapDataType(setLayout->setBindings[indexBase].descriptorType);
++            const uint32_t argumentIndex = descriptorIndex - indexBase + bindingIndex;
++
++            uint32_t endIndex = descriptorIndex + 1;
++            uint32_t previousArgumentIndex = argumentIndex;
++            while (endIndex < resourceEntries.size() && resourceEntries[endIndex].dirty) {
++                const uint32_t nextIndexBase = setLayout->descriptorIndexBases[endIndex];
++                const uint32_t nextBindingIndex = setLayout->descriptorBindingIndices[endIndex];
++                const MTL::DataType nextType = mapDataType(setLayout->setBindings[nextIndexBase].descriptorType);
++                const uint32_t nextArgumentIndex = endIndex - nextIndexBase + nextBindingIndex;
++                if ((nextType != dtype) || (nextArgumentIndex != previousArgumentIndex + 1)) {
++                    break;
++                }
++
++                previousArgumentIndex = nextArgumentIndex;
++                endIndex++;
++            }
++
++            const uint32_t count = endIndex - descriptorIndex;
++            const NS::Range range(argumentIndex, count);
++            switch (dtype) {
++                case MTL::DataTypeTexture: {
++                    std::vector<MTL::Texture *> textures(count);
++                    for (uint32_t i = 0; i < count; i++) {
++                        textures[i] = static_cast<MTL::Texture *>(resourceEntries[descriptorIndex + i].resource);
++                    }
++                    argumentBuffer.argumentEncoder->setTextures(textures.data(), range);
++                    break;
++                }
++                case MTL::DataTypePointer: {
++                    std::vector<MTL::Buffer *> buffers(count);
++                    std::vector<NS::UInteger> offsets(count);
++                    for (uint32_t i = 0; i < count; i++) {
++                        const ResourceEntry &entry = resourceEntries[descriptorIndex + i];
++                        buffers[i] = static_cast<MTL::Buffer *>(entry.resource);
++                        offsets[i] = entry.offset;
++                    }
++                    argumentBuffer.argumentEncoder->setBuffers(buffers.data(), offsets.data(), range);
++                    break;
++                }
++                case MTL::DataTypeSampler: {
++                    std::vector<MTL::SamplerState *> samplers(count);
++                    for (uint32_t i = 0; i < count; i++) {
++                        samplers[i] = resourceEntries[descriptorIndex + i].sampler;
++                    }
++                    argumentBuffer.argumentEncoder->setSamplerStates(samplers.data(), range);
++                    break;
++                }
++                default:
++                    assert(false && "Unsupported descriptor type.");
++            }
++
++            for (uint32_t i = descriptorIndex; i < endIndex; i++) {
++                resourceEntries[i].dirty = false;
++            }
++
++            modified = true;
++            descriptorIndex = endIndex;
+         }
+ 
+-        resourceEntries[descriptorIndex].resource = nativeResource;
+-        resourceEntries[descriptorIndex].type = descriptorType;
++        hasPendingDescriptors = false;
++        if (modified && (argumentBuffer.mtl->storageMode() == MTL::StorageModeManaged)) {
++            argumentBuffer.mtl->didModifyRange(NS::Range(argumentBuffer.offset, argumentBuffer.mtl->length() - argumentBuffer.offset));
++        }
+     }
+ 
+     RenderDescriptorRangeType MetalDescriptorSet::getDescriptorType(const uint32_t binding) const {
+@@ -1847,7 +1939,13 @@ namespace RT64 {
+     }
+ 
+     MetalCommandList::~MetalCommandList() {
+-        mtl->release();
++        // The command buffer comes from commandBufferWithUnretainedReferences,
++        // which the caller does not own: it is autoreleased into the active
++        // autorelease pool (the per-frame pool on the workload thread), so it
++        // must NOT be released here or in commit(). Releasing an unowned
++        // buffer over-releases it and leaves a dangling pointer in the pool
++        // that crashes when the pool is popped (objc_autoreleasePoolPop ->
++        // objc_release).
+     }
+ 
+     void MetalCommandList::begin() {
+@@ -1867,7 +1965,9 @@ namespace RT64 {
+ 
+     void MetalCommandList::commit() {
+         mtl->commit();
+-        mtl->release();
++        // The buffer is pool-owned (see ~MetalCommandList); just drop the
++        // reference. The per-frame autorelease pool releases it when the
++        // frame's command encoding scope ends.
+         mtl = nullptr;
+     }
+ 
+@@ -2199,12 +2299,7 @@ namespace RT64 {
+         // Set pixel format for depth attachment if we have one, with write disabled
+         if (targetFramebuffer->depthAttachment != nullptr) {
+             pipelineDesc->setDepthAttachmentPixelFormat(targetFramebuffer->depthAttachment->mtl->pixelFormat());
+-            MTL::DepthStencilDescriptor *depthStencilDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
+-            depthStencilDescriptor->setDepthWriteEnabled(false);
+-            const MTL::DepthStencilState *depthStencilState = device->mtl->newDepthStencilState(depthStencilDescriptor);
+-            activeRenderEncoder->setDepthStencilState(depthStencilState);
+-
+-            depthStencilDescriptor->release();
++            activeRenderEncoder->setDepthStencilState(device->renderInterface->clearColorDepthStencilState);
+         }
+ 
+         const MTL::RenderPipelineState *pipelineState = device->renderInterface->getOrCreateClearRenderPipelineState(pipelineDesc);
+@@ -2578,6 +2673,12 @@ namespace RT64 {
+     }
+ 
+     void MetalCommandList::checkActiveComputeEncoder() {
++        for (MetalDescriptorSet *descriptorSet : computeDescriptorSets) {
++            if (descriptorSet != nullptr) {
++                descriptorSet->flushPendingDescriptors();
++            }
++        }
++
+         endOtherEncoders(EncoderType::Compute);
+         activeType = EncoderType::Compute;
+ 
+@@ -2670,6 +2771,12 @@ namespace RT64 {
+     }
+ 
+     void MetalCommandList::checkForUpdatesInGraphicsState() {
++        for (MetalDescriptorSet *descriptorSet : renderDescriptorSets) {
++            if (descriptorSet != nullptr) {
++                descriptorSet->flushPendingDescriptors();
++            }
++        }
++
+         if (dirtyGraphicsState.pipelineState) {
+             if (activeRenderState) {
+                 activeRenderEncoder->setRenderPipelineState(activeRenderState->renderPipelineState);
+@@ -2764,6 +2871,13 @@ namespace RT64 {
+ 
+         if (activeBlitEncoder == nullptr) {
+             activeBlitEncoder = mtl->blitCommandEncoder(device->renderInterface->reusableBlitDescriptor);
++            // blitCommandEncoder returns an autoreleased encoder. Retain it so
++            // the release in endActiveBlitEncoder is balanced; the pool pop
++            // consumes the factory autorelease. Without the retain the encoder
++            // is over-released (released once here, once by the pool), leaving
++            // a dangling pointer that crashes when the frame's autorelease
++            // pool is popped.
++            activeBlitEncoder->retain();
+             activeBlitEncoder->setLabel(MTLSTR("Copy Blit Encoder"));
+         }
+     }
+@@ -2784,6 +2898,10 @@ namespace RT64 {
+ 
+         if (activeResolveComputeEncoder == nullptr) {
+             activeResolveComputeEncoder = mtl->computeCommandEncoder();
++            // Same ownership rule as the blit encoder: retain so the release
++            // in endActiveResolveTextureComputeEncoder is balanced against the
++            // factory's autorelease.
++            activeResolveComputeEncoder->retain();
+             activeResolveComputeEncoder->setLabel(MTLSTR("Resolve Texture Encoder"));
+             activeResolveComputeEncoder->setComputePipelineState(device->renderInterface->resolveTexturePipelineState);
+         }
+@@ -2927,7 +3045,7 @@ namespace RT64 {
+ 
+     MetalPipelineLayout::~MetalPipelineLayout() {}
+ 
+-    void MetalPipelineLayout::bindDescriptorSets(MTL::CommandEncoder* encoder, const MetalDescriptorSet* const* descriptorSets, uint32_t descriptorSetCount, bool isCompute, uint32_t startIndex, std::unordered_set<MetalDescriptorSet*>& encoderDescriptorSets) const {
++    void MetalPipelineLayout::bindDescriptorSets(MTL::CommandEncoder* encoder, MetalDescriptorSet* const* descriptorSets, uint32_t descriptorSetCount, bool isCompute, uint32_t startIndex, std::unordered_set<MetalDescriptorSet*>& encoderDescriptorSets) const {
+         for (uint32_t i = startIndex; i < setLayoutCount; i++) {
+             if (i >= descriptorSetCount || descriptorSets[i] == nullptr) {
+                 continue;
+@@ -3116,6 +3234,8 @@ namespace RT64 {
+         clearVertexFunction->release();
+         clearColorFunction->release();
+         clearDepthFunction->release();
++        clearColorDepthStencilState->release();
++        clearDepthStencilState->release();
+         device->release();
+         reusableBlitDescriptor->release();
+     }
+@@ -3130,8 +3250,15 @@ namespace RT64 {
+     }
+ 
+     bool MetalInterface::isValid() const {
++#if RT64_IOS && TARGET_OS_SIMULATOR
++        // Simulator exposes a host-backed Metal device whose GPU-family report
++        // does not match physical Apple GPU families. The backend already
++        // disables unsupported native-sampler paths for this target.
++        return device != nullptr;
++#else
+         // check if Metal is available and we support bindless textures: GPUFamilyMac2 or GPUFamilyApple6
+         return MTL::CopyAllDevices()->count() > 0 && (device->supportsFamily(MTL::GPUFamilyMac2) || device->supportsFamily(MTL::GPUFamilyApple6));
++#endif
+     }
+ 
+     void MetalInterface::createResolvePipelineState() {
+@@ -3234,6 +3361,10 @@ namespace RT64 {
+ 
+         // Create depth stencil state
+         MTL::DepthStencilDescriptor *depthDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
++        depthDescriptor->setDepthWriteEnabled(false);
++        depthDescriptor->setDepthCompareFunction(MTL::CompareFunctionAlways);
++        clearColorDepthStencilState = device->newDepthStencilState(depthDescriptor);
++
+         depthDescriptor->setDepthWriteEnabled(true);
+         depthDescriptor->setDepthCompareFunction(MTL::CompareFunctionAlways);
+         clearDepthStencilState = device->newDepthStencilState(depthDescriptor);
+diff --git a/src/render/rt64_buffer_uploader.cpp b/src/render/rt64_buffer_uploader.cpp
+index de997a0..155c7ff 100644
+--- a/src/render/rt64_buffer_uploader.cpp
++++ b/src/render/rt64_buffer_uploader.cpp
+@@ -41,6 +41,9 @@ namespace RT64 {
+ 
+     void BufferUploader::threadLoop() {
+         Thread::setCurrentThreadName("RT64 Buffer");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         running = true;
+ 
+@@ -172,4 +175,4 @@ namespace RT64 {
+             return !workAvailable;
+         });
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/src/render/rt64_raster_shader_cache.cpp b/src/render/rt64_raster_shader_cache.cpp
+index bf7b669..9099479 100644
+--- a/src/render/rt64_raster_shader_cache.cpp
++++ b/src/render/rt64_raster_shader_cache.cpp
+@@ -29,6 +29,9 @@ namespace RT64 {
+ 
+     void RasterShaderCache::CompilationThread::loop() {
+         Thread::setCurrentThreadName("RT64 Shader");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         // The shader compilation thread should have idle priority by default as the application can use the ubershader in the meantime.
+         Thread::setCurrentThreadPriority(Thread::Priority::Idle);
+@@ -179,4 +182,4 @@ namespace RT64 {
+         std::unique_lock<std::mutex> lock(GPUShadersMutex);
+         return GPUShaders.size();
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/src/render/rt64_texture_cache.cpp b/src/render/rt64_texture_cache.cpp
+index d6f110a..42ddf45 100644
+--- a/src/render/rt64_texture_cache.cpp
++++ b/src/render/rt64_texture_cache.cpp
+@@ -406,6 +406,9 @@ namespace RT64 {
+ 
+     void TextureCache::StreamThread::loop() {
+         Thread::setCurrentThreadName("RT64 Stream");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         // Texture streaming threads should have a priority somewhere inbetween the main threads and the shader compilation threads.
+         Thread::setCurrentThreadPriority(Thread::Priority::Low);
+@@ -965,6 +968,9 @@ namespace RT64 {
+ 
+     void TextureCache::uploadThreadLoop() {
+         Thread::setCurrentThreadName("RT64 Texture");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         uploadThreadRunning = true;
+ 

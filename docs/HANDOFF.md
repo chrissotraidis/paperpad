@@ -51,6 +51,25 @@ for the full issue list.
   number to the chip's page count so out-of-range reads wrap into erased
   (0xFF) flash and the checksum check fails gracefully. Verified: macOS
   boots → title → file select → new-game creation → Mario's House gameplay.
+- **Teardown autorelease crash fixed (2026-08-06)**: the
+  `objc_autoreleasePoolPop` → `objc_release` crash on the RT64 Workload thread
+  at exit is gone. Root cause: four Metal-cpp objects were over-released
+  (blit encoder, resolve compute encoder, a buffer-formatted-view texture
+  descriptor, and `MetalShader::functionName`) — created by autoreleased class
+  factories but explicitly released, so their memory was freed while the
+  caller's autorelease pool still held a pending release. Identified with
+  `NSZombieEnabled` (`-[AGXG13GFamilyBlitContext release]: message sent to
+  deallocated instance`). Fixes: `retain()` on the blit/resolve encoders
+  (matching the render/compute encoders), no release for the autoreleased
+  descriptor/string, no release for the unowned
+  `commandBufferWithUnretainedReferences()` buffer in `commit()`, thread-wide
+  autorelease pool markers on every RT64 worker thread, and
+  `Application::~Application` stops/joins the workload + present queues before
+  any render objects are destroyed. Patch:
+  `patches/mstan-rt64/metal-worker-autorelease-and-overrelease-fixes.patch`.
+  Verified: 8 consecutive macOS SIGTERM cycles and a 110s run exit cleanly
+  (zero crash reports), iPad Simulator terminate is clean, and the game
+  renders normally.
 - **iPhone Simulator app builds, installs, launches, and reaches Toad Town
   gameplay** under Metal with the Paper Mario touch overlay (stick, D-pad,
   A/B/Z, C-buttons, L/R, START). Health log stable to t=450 (7.5+ minutes),
@@ -89,9 +108,6 @@ for the full issue list.
 - **Audible audio unverified**: the HLE backend completes every audio task and
   writes mixed output, but no speaker/device proof yet (host SDL audio path
   needs a listen check or AI-buffer sample verification).
-- macOS teardown crashes in RT64 worker autorelease cleanup
-  (`objc_autoreleasePoolPop`); gameplay unaffected. Reproduced again
-  2026-08-06 07:51:46 (`PaperPad-2026-08-06-075155.ips`).
 - Audible proof on real speakers/device still pending (the SDL queue
   demonstrably carries audio, but no listen test on hardware speakers yet).
 - Touch input beyond overlay visibility is untested on iOS (no simctl touch

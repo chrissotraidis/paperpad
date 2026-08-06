@@ -13,6 +13,14 @@ Latest fixes (2026-08-06):
   wrap into erased flash and fail the checksum gracefully instead of
   crashing `save_read` (SIGBUS). Verified macOS: fresh card → title → file
   select → new game → Mario's House gameplay (`docs/KNOWN-ISSUES.md` #6).
+- **Teardown autorelease crash fixed**: the RT64 Workload thread's
+  `objc_autoreleasePoolPop` crash at exit is gone. Root cause: over-released
+  Metal-cpp objects (blit/resolve encoders, a texture descriptor, a shader
+  name string) left dangling pointers in the caller's autorelease pool.
+  Fixed with proper retain/release ownership, thread-wide autorelease pool
+  markers on all RT64 workers, and stopping the workers before render-object
+  teardown (`docs/KNOWN-ISSUES.md` #2). Verified: 8 macOS SIGTERM cycles +
+  a 110s run + iPad terminate all exit cleanly with zero crash reports.
 
 | Target | Status | Evidence |
 |---|---|---|
