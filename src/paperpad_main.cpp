@@ -800,13 +800,14 @@ int PAPERPAD_MAIN(int argc, char** argv) {
             uint64_t dp = ultramodern_dp_complete_count();
             uint64_t dgfx = gfx - last_gfx;
             std::fprintf(health_f,
-                "[health] t=%lld gfx=+%llu audio=+%llu sp=+%llu dp=+%llu ext_pending=%d\n",
+                "[health] t=%lld gfx=+%llu audio=+%llu sp=+%llu dp=+%llu ext_pending=%d queued=%u\n",
                 (long long)(i * 2),
                 (unsigned long long)dgfx,
                 (unsigned long long)(audio - last_audio),
                 (unsigned long long)(sp - last_sp),
                 (unsigned long long)(dp - last_dp),
-                ultramodern::external_message_pending() ? 1 : 0);
+                ultramodern::external_message_pending() ? 1 : 0,
+                audio_device != 0 ? SDL_GetQueuedAudioSize(audio_device) : 0u);
             std::fflush(health_f);
             if ((i % 5) == 0) {
                 paperpad_dump_render_state();

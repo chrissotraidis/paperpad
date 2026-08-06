@@ -29,6 +29,8 @@ logs, screenshots, gameplay checks, and outcome.
 | 2026-08-06 01:4x | iPad Pro 11" (M4) Sim | video capture + frame analysis (AVFoundation, 0.1-0.5s sampling) | no sustained full-frame flicker in boot/storybook captures; the perceived "flashing" traced to the 1x internal resolution upscaled 7.5x (soft + shimmer in motion), not a frame-timing bug |
 | 2026-08-06 01:5x | iPad Pro 11" (M4) Sim | render probe shows `userConfig.resolution=0 resolutionScale=1.000` | confirmed the render was RT64 Resolution::Original (1x); default changed to Auto → `resolutionScale=7.000` (2240×1680), steady 60fps, crisp output (commit `557d376`) |
 | 2026-08-06 02:0x | iPad Pro 11" (M4) Sim | settings sheet build (volume/resolution/aspect/layout) | builds and launches clean; the C bridge (PaperPad_SetAudioVolume/SetGraphicsConfig) applies saved settings at startup |
+| 2026-08-06 02:0x | iPad Pro 11" (M4) Sim | agent-driven playthrough via Simulator hardware-keyboard forwarding (osascript key codes; Return=START, Z=A) | **full flow verified**: title screen -> storybook -> name entry (File 1 "First Play" created) -> file select -> "Start Game with File 1?" -> **Mario's House gameplay** ("Mail call!" dialogue advancing; health t=690+ at 60fps). Evidence: `docs/evidence/ipad-fileselect.jpg`, `docs/evidence/ipad-gameplay-marios-house.jpg` |
+| 2026-08-06 02:1x | iPad Pro 11" (M4) Sim | audio output probe (SDL queue size added to health log) | `queued=2240..4704` bytes every tick — HLE audio mix reaches the SDL device queue (end-to-end audio path confirmed) |
 
 ## Crash-log capture
 

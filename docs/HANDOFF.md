@@ -39,6 +39,12 @@ for the full issue list.
 - **Settings sheet** added to the "..." menu (volume, resolution Auto/2x,
   aspect Original/Expand, edit/reset touch layout, ROM management);
   persisted and applied at launch.
+- **All three targets verified playable (2026-08-06)**: macOS reaches Toad
+  Town gameplay; iPhone Simulator reaches Toad Town; iPad Simulator was
+  driven through the entire boot flow (title -> storybook -> name entry ->
+  file select -> Mario's House gameplay) using the Simulator's hardware-
+  keyboard forwarding. Audio output flows end-to-end (health log `queued=`
+  bytes from the SDL queue).
 - Freeze diagnostic in the health logger: when task submission stalls, it
   dumps `gGameStatusPtr` state (`startupState`/`introPart`/`mainScriptID`/
   pressed) plus the last message-log events (`[freeze]` lines in
@@ -57,11 +63,8 @@ for the full issue list.
   needs a listen check or AI-buffer sample verification).
 - macOS teardown crashes in RT64 worker autorelease cleanup
   (`objc_autoreleasePoolPop`); gameplay unaffected.
-- A full iPad playthrough to gameplay is still to be done (the title screen
-  needs a button press; simctl has no touch injection — the title-screen
-  demo mode or XCUITest can drive it).
-- Audible audio proof still pending (HLE processes audio; volume control
-  added but no speaker/device listen test yet).
+- Audible proof on real speakers/device still pending (the SDL queue
+  demonstrably carries audio, but no listen test on hardware speakers yet).
 - Touch input beyond overlay visibility is untested on iOS (no simctl touch
   injection; the input path is shared with the verified macOS keyboard path).
 - The recompiled `n_aspMain` ucode remains broken (HLE bypasses it); fixing
