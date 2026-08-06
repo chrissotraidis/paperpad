@@ -39,6 +39,7 @@ logs, screenshots, gameplay checks, and outcome.
 | 2026-08-06 08:0x | iPad Pro 11" (M4) Sim | final fix: REMOVED the VI-thread retrace present; only the swap-task present remains (`RT64_PRESENT_LOG`, `RT64_FLAG_LOG` console) | **exactly one present per frame, always after the swap task** (`[task] flags=0x4` -> one `[present]`, workload ids even, fb cycling 0x38F800/0x3B5000/0x3DA800); no odd-id or double presents. |
 | 2026-08-06 08:0x | iPad Pro 11" (M4) Sim | screenshot bursts (45+45 frames) through logos -> intro -> storybook on the fixed build | **no repeated/identical frames** (previous build had 6/40 identical 0.1818 frames); dark frames are the storybook's own pages, each unique; brightness changes smoothly (0.17-0.57) with the cutscene; health log steady (gfx +104-120/2s). |
 | 2026-08-06 08:1x | macOS | same fixed build, `RT64_PRESENT_LOG=1` launch | identical clean pattern: one present per frame at the swap boundary, no mid-frame presents. |
+| 2026-08-06 08:1x | iPhone 16 Pro Sim | fixed build install + `simctl launch --console-pty` (`RT64_PRESENT_LOG`/`RT64_FLAG_LOG`) + 40-shot screenshot burst through the intro storybook | same clean pattern (one present per frame at the swap task, even workload ids); burst brightness drifts smoothly between scene plateaus (0.182-0.199-0.267) with no oscillation or identical repeat frames; dark frames are the storybook's own pages (`docs/evidence/iphone-flash-fixed-storybook.jpg`); health log steady (gfx +81-115/2s during the cutscene, audio +120). |
 
 ## Crash-log capture
 
