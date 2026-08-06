@@ -24,6 +24,8 @@ logs, screenshots, gameplay checks, and outcome.
 | 2026-08-06 00:01 | iPad Pro 11" (M4) Sim | install + `simctl launch --console-pty` | renders intro at full speed (health t=270+, 9 min), touch overlay visible; **window is 667×375 = iPhone-compatibility mode** (`diag: screen=667x375 mode=750x1334 native=750x1334` while the sim framebuffer is 1668×2420). Evidence: `docs/evidence/ipad-intro-hle.png` |
 | 2026-08-06 00:1x | iPad Pro 11" (M4) Sim | diagnostics expanded (screen/currentMode/nativeBounds) + `SDL_SetWindowFullscreen` experiment | confirmed the canvas is iPhone-8-sized regardless of fullscreen request; `UIDeviceFamily=[1]` found in the built plist (iPhone-only) — the compatibility-mode cause |
 | 2026-08-06 00:2x | build | fix: remove `LSRequiresIPhoneOS`, set `XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"` | rebuilt plist has `UIDeviceFamily=[1,2]`; commit `eca833c` (verification pending a fresh boot) |
+| 2026-08-06 01:0x | iPad Pro 11" (M4) Sim | native build + render-state probe (`[render]` lines in health log) | **drawable/swapchain mismatch found**: `swapchain=2420x1668` but `drawable=1210x834 @ contentsScale 1.00` — the present clips the frame to the smaller surface (the zoom/crop). VI `width=320 fbSize=320x240` confirmed the game is 320×240 |
+| 2026-08-06 01:1x | iPad Pro 11" (M4) Sim | fix: set CAMetalLayer `contentsScale=nativeScale`, `drawableSize=bounds×nativeScale` (commit `0ab64ce`) | diag now `drawable=2420x1668 @ contentsScale 2.00`; **PAPER MARIO title screen renders in full** (`docs/evidence/ipad-title-full.jpg`); storybook text ("Far, far away, beyond the sky.") fully visible |
 
 ## Crash-log capture
 

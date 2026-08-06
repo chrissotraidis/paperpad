@@ -187,6 +187,21 @@ Updated 2026-08-05 23:55.
     (commit `eca833c`). Window diagnostics now log
     `UIScreen.bounds/currentMode/nativeBounds` to catch regressions.
 
+3. **Game rendered zoomed/cropped on iOS (FIXED 2026-08-06)** — the visible
+   game frame showed only the top-left ~half (e.g. the PAPER MARIO title
+   sign cut to "PA"/"MA"). Root cause: RT64's iOS `CocoaWindow` reports the
+   swapchain size in PIXELS (window points × nativeScale = 2420×1668 on the
+   iPad), but SDL leaves the CAMetalLayer at `contentsScale 1.0`, so the
+   actual drawable was point-sized (1210×834). The present viewport math is
+   sized for the pixel surface and the GPU clipped the frame to the smaller
+   drawable — a 2x zoom with the right/bottom cropped. Diagnosed with a
+   runtime render probe (`[render] swapchain=2420x1668 vs drawable=1210x834`).
+   Fix (commit `0ab64ce`): `paperpad_fix_metal_layer_scale` sets the layer's
+   `contentsScale` to the screen's nativeScale and `drawableSize` to
+   bounds × nativeScale after the Metal view is created. Verified: diag
+   shows `drawable=2420x1668 @ contentsScale 2.00` and the title screen
+   renders in full (`docs/evidence/ipad-title-full.jpg`).
+
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG
    evidence shows the game content bottom/right-anchored with black elsewhere.

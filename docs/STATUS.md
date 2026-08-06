@@ -6,7 +6,7 @@ Updated 2026-08-05 23:55 (America/Chicago). Target-by-target status.
 |---|---|---|
 | macOS native app | **Playable: intro, story narration, and Toad Town gameplay reached; runs 20+ minutes at ~60fps with HLE audio** | `docs/evidence/macos-gameplay-opening.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`; health log `t=1348` stable |
 | iPhone Simulator | **Intro + story + Toad Town gameplay reached; touch overlay visible; 7.5+ minutes stable** | `docs/evidence/ios-iphone-intro-hle.jpg`; health log `t=450` stable |
-| iPad Simulator | **Runs and plays the intro; native-mode fix (UIDeviceFamily 1,2) built and pushed — full verification pending a fresh boot** | `docs/evidence/ipad-intro-hle.png` (pre-fix compatibility-mode capture); fix commit `eca833c` |
+| iPad Simulator | **Runs natively fullscreen with correct rendering (title screen, storybook, intro); touch overlay works** | `docs/evidence/ipad-title-full.jpg`; fixes `eca833c` (device family) + `0ab64ce` (drawable scale) |
 | iOS device (unsigned IPA) | Not started | — |
 | Signed physical device | Blocked externally (no signing identity/device) | — |
 
@@ -71,15 +71,23 @@ only); audio output not yet confirmed audible.
   native=750x1334` (iPhone-8-sized canvas) while the sim framebuffer was the
   full 1668×2420. Fixed by removing `LSRequiresIPhoneOS` and setting the
   target device family to `1,2` (commit `eca833c`).
-- Verification of the native iPad window (fullscreen, correct scale) and a
-  playthrough to gameplay is the next step; it requires a fresh simulator
-  boot.
+- Native mode confirmed: window 1210×834, swapchain 2420×1668, drawable
+  2420×1668 @ contentsScale 2.00.
+- A second rendering bug was found and fixed: the CAMetalLayer was left at
+  `contentsScale 1.0`, so the drawable (1210×834) was half the swapchain's
+  pixel size (2420×1668) and the present clipped the frame — the
+  "zoomed/cropped" look. Fixed by aligning the layer's scale/drawableSize
+  with the swapchain (commit `0ab64ce`). The PAPER MARIO title screen now
+  renders in full (`docs/evidence/ipad-title-full.jpg`), and the storybook
+  plays with correct framing.
 
 ## Next milestone
 
-The primary intro freeze is fixed on macOS and iPhone Simulator. Remaining:
-1. Verify the iPad native-mode fix (fullscreen window, correct rendering,
-   intro → gameplay playthrough).
+The primary intro freeze is fixed on all three targets; the iPad now renders
+natively and correctly. Remaining:
+1. Drive the iPad through a full playthrough (title screen needs a button
+   press; no simctl touch injection — use the title-screen demo mode or
+   XCUITest) to confirm gameplay on iPad.
 2. Confirm audible audio output (host AI buffer / speaker check) — the HLE
    backend processes tasks, but an audible proof on speakers or a device is
    still open.
