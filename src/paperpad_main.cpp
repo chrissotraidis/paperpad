@@ -47,11 +47,13 @@ extern "C" uint8_t* ultramodern_get_rdram(void);
 extern "C" void ultramodern_mesg_recent_copy(
     void* out_void, size_t cap, size_t* n_written, uint64_t* next_seq_out);
 extern "C" size_t ultramodern_mesg_event_size(void);
+extern "C" int paperpad_dump_render_state(void);
 bool ultramodern::external_message_pending();
 
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y);
 extern "C" void paperpad_touch_attach(void* ui_window);
+extern "C" void paperpad_fix_metal_layer_scale(void* ui_window, void* metal_layer);
 #endif
 #include "paperpad_paths.h"
 
@@ -354,6 +356,7 @@ namespace {
         void* ios_layer = SDL_Metal_GetLayer(SDL_Metal_CreateView(window));
         ios_ui_window = wm_info.info.uikit.window;
         ios_metal_layer = ios_layer;
+        paperpad_fix_metal_layer_scale(wm_info.info.uikit.window, ios_layer);
         paperpad_touch_attach(wm_info.info.uikit.window);
         paperpad_log_window_diagnostics(wm_info.info.uikit.window, ios_layer);
         // One-shot delayed diagnostics (post-swapchain-resize state).
@@ -772,6 +775,10 @@ int PAPERPAD_MAIN(int argc, char** argv) {
                 (unsigned long long)(dp - last_dp),
                 ultramodern::external_message_pending() ? 1 : 0);
             std::fflush(health_f);
+            if ((i % 5) == 0) {
+                paperpad_dump_render_state();
+                std::fflush(stderr);
+            }
             last_gfx = gfx; last_audio = audio; last_sp = sp; last_dp = dp;
 
             // Freeze triage: once task submission stalls for two consecutive

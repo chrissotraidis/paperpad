@@ -13,6 +13,10 @@ const char* paperpad_apple_application_support_dir(void);
 // drawable size currently in use. No-op elsewhere.
 void paperpad_log_window_diagnostics(void* ui_window, void* metal_layer);
 
+// iOS only: aligns the CAMetalLayer's contentsScale/drawableSize with RT64's
+// pixel-sized swapchain math (see KNOWN-ISSUES.md iOS #5). No-op elsewhere.
+void paperpad_fix_metal_layer_scale(void* ui_window, void* metal_layer);
+
 #ifdef __cplusplus
 }
 #endif

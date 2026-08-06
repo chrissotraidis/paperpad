@@ -322,6 +322,28 @@ namespace {
             }
         }
 
+        void dump_render_state() {
+            if (!app) {
+                std::fprintf(stderr, "[render] app not ready\n");
+                return;
+            }
+            const auto* res = app->sharedQueueResources.get();
+            std::fprintf(stderr,
+                "[render] swapchain=%ux%u resolutionScale=%.3f,%.3f\n",
+                res ? res->swapChainWidth : 0u,
+                res ? res->swapChainHeight : 0u,
+                res ? (double)res->resolutionScale.x : 0.0,
+                res ? (double)res->resolutionScale.y : 0.0);
+            RT64::VI vi = app->core.decodeVI();
+            hlslpp::uint2 fb = vi.fbSize();
+            std::fprintf(stderr,
+                "[render] vi width=%u fbSize=%ux%u xScale=%.3f yScale=%.3f hStart=%d-%d vStart=%d-%d\n",
+                vi.width, (unsigned)fb.x, (unsigned)fb.y,
+                (double)vi.xScaleFloat(), (double)vi.yScaleFloat(),
+                vi.hRegion.hStart, vi.hRegion.hEnd,
+                vi.vRegion.vStart, vi.vRegion.vEnd);
+        }
+
         uint32_t get_display_framerate() const override {
             if (!app) {
                 return 60;
@@ -344,9 +366,28 @@ namespace {
     };
 }
 
+// Runtime render-state probe for the health logger: the swapchain size, the
+// resolution scale RT64 picked, and the VI-derived framebuffer size. Lets a
+// "zoomed/cropped" report be checked against the actual numbers instead of
+// guessed at.
+namespace {
+    RT64Context* g_probe_context = nullptr;
+}
+
+extern "C" int paperpad_dump_render_state(void) {
+    if (g_probe_context != nullptr) {
+        g_probe_context->dump_render_state();
+        return 1;
+    }
+    fprintf(stderr, "[render] probe context not registered\n");
+    return 0;
+}
+
 std::unique_ptr<ultramodern::renderer::RendererContext> paper_mario::renderer::create_render_context(
     uint8_t* rdram,
     ultramodern::renderer::WindowHandle window_handle,
     bool developer_mode) {
-    return std::make_unique<RT64Context>(rdram, window_handle, developer_mode);
+    auto context = std::make_unique<RT64Context>(rdram, window_handle, developer_mode);
+    g_probe_context = context.get();
+    return context;
 }

@@ -38,6 +38,27 @@ void paperpad_log_window_diagnostics(void* ui_window, void* metal_layer) {
         layer, drawable.width, drawable.height, layer.bounds.size.width,
         layer.bounds.size.height, layer.contentsScale);
 }
+
+// RT64's iOS CocoaWindow reports the swapchain size in PIXELS (window points
+// x nativeScale), but SDL leaves the CAMetalLayer at contentsScale 1.0, so
+// the actual drawable is point-sized (half/third of the swapchain's assumed
+// size). The present math then sizes the frame for the larger surface and the
+// GPU clips it to the smaller drawable — the "zoomed in, right side cut off"
+// look. Align the layer with the swapchain: contentsScale = screen native
+// scale and drawableSize = bounds x nativeScale.
+void paperpad_fix_metal_layer_scale(void* ui_window, void* metal_layer) {
+    UIWindow* window = (__bridge UIWindow*)ui_window;
+    if (window == nullptr || metal_layer == nullptr) return;
+    UIScreen* screen = window.screen ?: [UIScreen mainScreen];
+    CGFloat scale = screen.nativeScale > 0.0 ? screen.nativeScale : screen.scale;
+    if (scale <= 0.0) return;
+    CAMetalLayer* layer = (__bridge CAMetalLayer*)metal_layer;
+    layer.contentsScale = scale;
+    CGRect bounds = window.bounds;
+    layer.drawableSize = CGSizeMake(bounds.size.width * scale,
+                                    bounds.size.height * scale);
+}
 #else
 void paperpad_log_window_diagnostics(void*, void*) {}
+void paperpad_fix_metal_layer_scale(void*, void*) {}
 #endif
