@@ -31,10 +31,14 @@ for the full issue list.
   `docs/evidence/ios-iphone-touch-overlay.png`.
 - **iPad Simulator app builds, installs, launches, and renders correctly**:
   native fullscreen (window 1210×834, drawable 2420×1668 @ contentsScale
-  2.00), the PAPER MARIO title screen and storybook render in full, and the
-  touch overlay works. Two fixes: device family 1,2 (commit `eca833c`) and
-  CAMetalLayer scale aligned with the pixel-sized swapchain (commit
-  `0ab64ce`). Evidence: `docs/evidence/ipad-title-full.jpg`.
+  2.00), crisp 7x internal rendering (2240×1680), the PAPER MARIO title
+  screen and storybook render in full, and the touch overlay works. Fixes:
+  device family 1,2 (`eca833c`), CAMetalLayer scale (`0ab64ce`), and
+  scale-to-window resolution default (`557d376`). Evidence:
+  `docs/evidence/ipad-title-full.jpg`.
+- **Settings sheet** added to the "..." menu (volume, resolution Auto/2x,
+  aspect Original/Expand, edit/reset touch layout, ROM management);
+  persisted and applied at launch.
 - Freeze diagnostic in the health logger: when task submission stalls, it
   dumps `gGameStatusPtr` state (`startupState`/`introPart`/`mainScriptID`/
   pressed) plus the last message-log events (`[freeze]` lines in
@@ -56,6 +60,8 @@ for the full issue list.
 - A full iPad playthrough to gameplay is still to be done (the title screen
   needs a button press; simctl has no touch injection — the title-screen
   demo mode or XCUITest can drive it).
+- Audible audio proof still pending (HLE processes audio; volume control
+  added but no speaker/device listen test yet).
 - Touch input beyond overlay visibility is untested on iOS (no simctl touch
   injection; the input path is shared with the verified macOS keyboard path).
 - The recompiled `n_aspMain` ucode remains broken (HLE bypasses it); fixing

@@ -202,6 +202,17 @@ Updated 2026-08-05 23:55.
    shows `drawable=2420x1668 @ contentsScale 2.00` and the title screen
    renders in full (`docs/evidence/ipad-title-full.jpg`).
 
+4. **Game rendered soft/shimmering at 1x internal resolution (FIXED
+   2026-08-06)** — the graphics config defaulted to RT64 `Resolution::Original`
+   (1x), so the native 320x240 frame was upscaled ~7.5x to the iPad's
+   2420x1668 drawable — visibly soft, and the moving image shimmered (this is
+   the "screen flashing / performance" the user saw on a live Simulator).
+   Diagnosed with the render probe (`userConfig.resolution=0 resolutionScale=
+   1.000`). Fix (commit `557d376`): default the graphics config to
+   `Resolution::Auto` (WindowIntegerScale) unless the iOS settings sheet has a
+   saved preference; the render now runs at 7x (2240x1680) with steady 60fps.
+   The settings sheet offers Auto/2x resolution and Original/Expand aspect.
+
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG
    evidence shows the game content bottom/right-anchored with black elsewhere.

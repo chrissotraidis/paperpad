@@ -6,7 +6,7 @@ Updated 2026-08-05 23:55 (America/Chicago). Target-by-target status.
 |---|---|---|
 | macOS native app | **Playable: intro, story narration, and Toad Town gameplay reached; runs 20+ minutes at ~60fps with HLE audio** | `docs/evidence/macos-gameplay-opening.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`; health log `t=1348` stable |
 | iPhone Simulator | **Intro + story + Toad Town gameplay reached; touch overlay visible; 7.5+ minutes stable** | `docs/evidence/ios-iphone-intro-hle.jpg`; health log `t=450` stable |
-| iPad Simulator | **Runs natively fullscreen with correct rendering (title screen, storybook, intro); touch overlay works** | `docs/evidence/ipad-title-full.jpg`; fixes `eca833c` (device family) + `0ab64ce` (drawable scale) |
+| iPad Simulator | **Runs natively fullscreen, renders crisply at 7x (2240x1680), plays the intro/story; settings sheet + touch overlay work** | `docs/evidence/ipad-title-full.jpg`; fixes `eca833c`, `0ab64ce`, `557d376` |
 | iOS device (unsigned IPA) | Not started | — |
 | Signed physical device | Blocked externally (no signing identity/device) | — |
 
@@ -80,6 +80,14 @@ only); audio output not yet confirmed audible.
   with the swapchain (commit `0ab64ce`). The PAPER MARIO title screen now
   renders in full (`docs/evidence/ipad-title-full.jpg`), and the storybook
   plays with correct framing.
+- A third rendering issue was fixed: the internal resolution defaulted to 1x
+  (native 320×240 upscaled ~7.5x), which looked soft and shimmered in motion
+  (the "screen flashing" reported on the live Simulator). The default is now
+  `Resolution::Auto` (WindowIntegerScale, 7x = 2240×1680 on the iPad) with
+  steady 60fps (commit `557d376`).
+- Settings sheet added to the "..." menu: master volume, resolution (Auto/2x),
+  aspect (Original/Expand), edit/reset touch layout, ROM management.
+  Persisted and applied at launch.
 
 ## Next milestone
 
