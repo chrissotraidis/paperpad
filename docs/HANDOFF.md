@@ -23,6 +23,17 @@ for the full issue list.
   target", and eventually spins forever — freezing the game). HLE processes
   the same OSTask reliably. Patch: `patches/mstan-n64modernruntime/
   hle-audio-rsp.patch`; dependency vendored at `ref/mupen64plus-rsp-hle`.
+- **Screen flashing fixed (2026-08-06)**: the full/partial frame alternation
+  during 30fps cutscenes (the storybook flashing between the complete scene
+  and the bare starfield) is gone. Root cause: Paper Mario builds each frame
+  with two gfx tasks and the present could land between them, drawing the
+  half-built target. Fix: the present waits for the frame's main task (odd
+  workload id + early notify + 16ms bound) and the runtime presents at the
+  game's frame cadence. Verified on macOS and iPad: frame analysis dropped
+  from 253 alternations/32s to 4 changes/55s (the rest are intended page
+  transitions), gfx steady at 60fps. Patches: `patches/mstan-rt64/
+  present-wait-workload.patch`, `patches/mstan-n64modernruntime/
+  vi-screen-update-cadence.patch`.
 - **iPhone Simulator app builds, installs, launches, and reaches Toad Town
   gameplay** under Metal with the Paper Mario touch overlay (stick, D-pad,
   A/B/Z, C-buttons, L/R, START). Health log stable to t=450 (7.5+ minutes),
