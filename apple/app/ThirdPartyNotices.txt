@@ -1,18 +1,21 @@
-AnnePad third-party notices
+PaperPad third-party notices
 ============================
 
 This local sideload build is a native static recompilation frontend. It does
 not contain a game ROM. The user must supply a legally obtained supported ROM.
-Pokémon and Pokémon Stadium are trademarks of Nintendo, Creatures, and GAME
-FREAK. AnnePad is an independent project and is not affiliated with or endorsed
-by those companies.
+Paper Mario is a trademark of Nintendo. PaperPad is an independent project
+and is not affiliated with or endorsed by Nintendo.
 
 Runtime source components
 -------------------------
 
-PokemonStadiumRecomp
-  Source: https://github.com/mstan/PokemonStadiumRecomp
-  License: GNU General Public License version 3 or later (GPL-3.0-or-later)
+Paper-Mario-ReCut
+  Source: https://github.com/SMCGames/Paper-Mario-ReCut
+  License: MIT (see the project's LICENSE/COMPLIANCE documents)
+
+papermario (pmret decomp)
+  Source: https://github.com/pmret/papermario
+  License: MIT
 
 N64ModernRuntime
   Source: https://github.com/mstan/N64ModernRuntime
@@ -28,6 +31,10 @@ RT64
   Copyright (c) 2026 Matthew Stanley; Copyright (c) 2024 RT64 Contributors
   License: MIT
 
+mupen64plus-rsp-hle
+  Source: https://github.com/mupen64plus/mupen64plus-rsp-hle
+  License: GNU General Public License version 2 or later (GPL-2.0-or-later)
+
 Simple DirectMedia Layer (SDL)
   Source: https://github.com/libsdl-org/SDL
   License: zlib
@@ -36,12 +43,12 @@ The static runtime also incorporates third-party code distributed in the
 source trees above, including fmt, Dear ImGui, hlsl++, Im3d, metal-cpp,
 miniz, Mupen64Plus Core, o1heap, stb, xxHash, and zstd. Their copyright and
 license files are preserved in the exact pinned source checkouts used to build
-this app. AnnePad's dependency lock records those source revisions.
+this app. PaperPad's dependency lock records those source revisions.
 
 Source offer and license text
 -----------------------------
 
-The corresponding AnnePad source, exact dependency revisions, maintained patch
+The corresponding PaperPad source, exact dependency revisions, maintained patch
 series, build instructions, and complete upstream license files must accompany
 any conveyed build. GPL license text is available at
 https://www.gnu.org/licenses/gpl-3.0.txt and in the pinned GPL source trees.

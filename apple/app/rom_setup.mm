@@ -156,7 +156,7 @@ BOOL installROMFromURL(NSURL* sourceURL, NSError** error) {
                           error:error]) {
         return NO;
     }
-    std::fprintf(stderr, "[PaperPad] ROM import accepted: Pokemon Stadium US 1.0\n");
+    std::fprintf(stderr, "[PaperPad] ROM import accepted: Paper Mario US 1.0\n");
     std::fflush(stderr);
     return YES;
 }
@@ -207,7 +207,7 @@ void styleButton(UIButton* button) {
     title.textAlignment = NSTextAlignmentCenter;
 
     UILabel* body = [[UILabel alloc] init];
-    body.text = @"Choose your legally obtained Pokémon Stadium (US) 1.0 ROM.\n\nPaperPad accepts .z64, .v64, and .n64 files, verifies the exact supported revision, and keeps the normalized copy private on this device. No ROM is included with the app.";
+    body.text = @"Choose your legally obtained Paper Mario (US) 1.0 ROM.\n\nPaperPad accepts .z64, .v64, and .n64 files, verifies the exact supported revision, and keeps the normalized copy private on this device. No ROM is included with the app.";
     body.textColor = [UIColor colorWithWhite:0.88 alpha:1.0];
     body.font = [UIFont systemFontOfSize:17.0 weight:UIFontWeightRegular];
     body.textAlignment = NSTextAlignmentCenter;
@@ -258,7 +258,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     NSError* error = nil;
     if (urls.count == 1 && installROMFromURL(urls.firstObject, &error)) {
         self.statusLabel.textColor = [UIColor colorWithRed:0.38 green:0.91 blue:0.57 alpha:1.0];
-        self.statusLabel.text = @"Verified. Starting Pokémon Stadium…";
+        self.statusLabel.text = @"Verified. Starting Paper Mario…";
         self.imported = YES;
         return;
     }
@@ -314,7 +314,7 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
     if (root != nil) {
         NSFileManager* files = NSFileManager.defaultManager;
         NSURL* rom = [root URLByAppendingPathComponent:@"baserom.z64"];
-        NSURL* runtimeCopy = [root URLByAppendingPathComponent:@"pokestadium.us.1.0.z64"];
+        NSURL* runtimeCopy = [root URLByAppendingPathComponent:@"papermario.us.1.0.z64"];
         NSURL* config = [root URLByAppendingPathComponent:@"rom.cfg"];
         if ([files fileExistsAtPath:rom.path] && ![files removeItemAtURL:rom error:&error]) {
             [self showMessage:@"Could Not Remove ROM" body:error.localizedDescription];

@@ -5,7 +5,7 @@ extern "C" {
 #endif
 
 // Blocks inside UIKit's run loop only when no valid private ROM is installed.
-// Returns after the user imports the supported Pokémon Stadium revision.
+// Returns after the user imports the supported Paper Mario (US) revision.
 bool paperpad_prepare_rom_setup(void);
 
 // Presents replace/remove controls above the running SDL view.

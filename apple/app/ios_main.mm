@@ -563,7 +563,7 @@ NSString* layoutDefaultsKey() {
             _stickKnob = point;
         } else {
             // Preserve quick taps across several runtime polls. Shoulder taps
-            // get a slightly longer grace window so Stadium's R+button party
+            // get a slightly longer grace window so the R+button party
             // selection chord can also be entered sequentially on a touchscreen.
             const uint16_t mask = _controls[control].mask;
             const uint8_t holdPolls = (mask & 0x0030u) != 0
