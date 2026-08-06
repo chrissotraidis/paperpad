@@ -1,5 +1,5 @@
 diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
-index a101a5d..ecd461a 100644
+index a101a5d..c754745 100644
 --- a/ultramodern/src/events.cpp
 +++ b/ultramodern/src/events.cpp
 @@ -59,15 +59,15 @@ struct UpdateConfigAction {
@@ -70,7 +70,20 @@ index a101a5d..ecd461a 100644
                  if (cur_state->mq != NULLPTR) {
                      // VI retrace is COALESCIBLE: droppable on a full guest queue.
                      // This is what stops a 60Hz retrace flood from starving the
-@@ -1157,6 +1170,14 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+@@ -1120,6 +1133,12 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+         if (events_context.action_queue.wait_dequeue_timed(action, 1ms)) {
+             // Dispatch on the action variant.
+             if (const auto* task_action = std::get_if<SpTaskAction>(&action)) {
++                static const bool s_flaglog = [](){ const char* v = std::getenv("RT64_FLAG_LOG"); return v != nullptr && v[0] != '0'; }();
++                if (s_flaglog) {
++                    fprintf(stderr, "[task] flags=0x%X type=%u\n",
++                            task_action->task.t.flags, task_action->task.t.type);
++                    fflush(stderr);
++                }
+                 // Enable instant present the first time a task arrives after the game starts.
+                 if (ultramodern::is_game_started() && !enabled_instant_present) {
+                     renderer_context->enable_instant_present();
+@@ -1157,6 +1176,14 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
                          std::memory_order_relaxed);
                      g_current_dl_entry_seq.fetch_add(1, std::memory_order_release);
                  }
@@ -85,31 +98,21 @@ index a101a5d..ecd461a 100644
                  renderer_context->send_dl(&task_action->task);
  #ifdef N64_COSIM
                  if (task_action->cosim_gfx_seq != 0) {
-@@ -1187,6 +1208,27 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+@@ -1184,6 +1211,17 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+ #ifndef N64_COSIM
+                 dp_complete(task_action->task.t.type);
+ #endif
++                // Paper Mario builds each frame with two gfx tasks: a
++                // background task (flags 0) and the main task (flags 0x4,
++                // NU_SC_SWAPBUFFER) that swaps the VI buffer when its RDP
++                // completes. Present exactly at that boundary so the
++                // framebuffer shown is always a completed frame - presenting
++                // at a fixed rate or the retrace can land between the tasks
++                // and show the half-built background (the full/partial
++                // flashing).
++                if ((task_action->task.t.flags & 0x4) != 0) {
++                    events_context.action_queue.enqueue(ScreenUpdateAction{ events_context.vi.regs });
++                }
                  // printf("Renderer ProcessDList time: %d us\n", static_cast<u32>(std::chrono::duration_cast<std::chrono::microseconds>(renderer_end - renderer_start).count()));
              }
              else if (const auto* screen_update_action = std::get_if<ScreenUpdateAction>(&action)) {
-+                // Paper Mario builds one frame with multiple gfx tasks (a
-+                // background task then the 3D/text task). The VI retrace can
-+                // fire between the task enqueues, so by the time we reach the
-+                // screen update the frame's remaining tasks are usually
-+                // already queued (the game enqueues the next task as soon as
-+                // the previous one's RDP completes). Drain any pending gfx
-+                // tasks before presenting so the presented framebuffer is a
-+                // complete frame instead of the half-built background - the
-+                // visible full/partial flashing.
-+                Action pending;
-+                while (events_context.action_queue.try_dequeue(pending)) {
-+                    if (const auto* ptask = std::get_if<SpTaskAction>(&pending)) {
-+#ifndef N64_COSIM
-+                        sp_complete(ptask->task.t.type);
-+#endif
-+                        renderer_context->send_dl(&ptask->task);
-+#ifndef N64_COSIM
-+                        dp_complete(ptask->task.t.type);
-+#endif
-+                    }
-+                }
-                 events_context.vi.update_screen_regs = screen_update_action->regs;
-                 renderer_context->update_screen();
-                 display_refresh_rate = renderer_context->get_display_framerate();
