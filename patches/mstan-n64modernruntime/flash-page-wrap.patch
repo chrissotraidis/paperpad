@@ -1,0 +1,63 @@
+diff --git a/librecomp/src/flash.cpp b/librecomp/src/flash.cpp
+index ab3048a..3251e91 100644
+--- a/librecomp/src/flash.cpp
++++ b/librecomp/src/flash.cpp
+@@ -21,6 +21,16 @@ void save_write(RDRAM_ARG PTR(void) rdram_address, uint32_t offset, uint32_t cou
+ void save_read(RDRAM_ARG PTR(void) rdram_address, uint32_t offset, uint32_t count);
+ void save_clear(uint32_t start, uint32_t size, char value);
+ 
++// The real flash chip decodes only the address lines that cover its 128 KiB,
++// so page numbers outside the chip wrap around. Paper Mario relies on this
++// when it reads an empty save slot: fio passes page_num = -1, which libultra
++// multiplies by 128 into a huge byte offset. Masking keeps the backing-save
++// access in bounds; the wrapped region is erased (0xFF) flash, so the game's
++// checksum validation fails gracefully instead of crashing the host.
++static uint32_t flash_page_offset(uint32_t page_num) {
++    return (page_num & (page_count - 1)) * page_size;
++}
++
+ // Staging area for a single page program: osFlashWriteBuffer fills it,
+ // osFlashWriteArray commits it to the backing save at the chosen page.
+ std::array<char, page_size> write_buffer;
+@@ -91,13 +101,9 @@ extern "C" void osFlashAllEraseThrough_recomp(uint8_t * rdram, recomp_context *
+ static void flash_erase_page(recomp_context* ctx) {
+     uint32_t page_num = (uint32_t)ctx->r4;
+ 
+-    // Reject an out-of-range page rather than clearing past the save.
+-    if (page_num >= page_count) {
+-        ctx->r2 = -1;
+-        return;
+-    }
+-
+-    save_clear(page_num * page_size, page_size, 0xFF);
++    // Mask like the chip's address decode; an out-of-range page erases the
++    // wrapped (already erased) region, so the status stays success.
++    save_clear(flash_page_offset(page_num), page_size, 0xFF);
+     ctx->r2 = 0;
+ }
+ 
+@@ -147,7 +153,7 @@ extern "C" void osFlashWriteArray_recomp(uint8_t * rdram, recomp_context * ctx)
+     uint32_t page_num = ctx->r4;
+ 
+     // Flush the staged page into the backing save.
+-    save_write_ptr(write_buffer.data(), page_num * page_size, page_size);
++    save_write_ptr(write_buffer.data(), flash_page_offset(page_num), page_size);
+ 
+     ctx->r2 = 0;
+ }
+@@ -163,7 +169,14 @@ extern "C" void osFlashReadArray_recomp(uint8_t * rdram, recomp_context * ctx) {
+     PTR(OSMesgQueue) mq = MEM_W(0x14, ctx->r29);
+ 
+     // Pull the requested page span from the backing save into guest RDRAM.
+-    save_read(PASS_RDRAM dramAddr, page_num * page_size, n_pages * page_size);
++    const uint32_t offset = flash_page_offset(page_num);
++    uint32_t count = n_pages * page_size;
++    // Never read past the end of the chip; the game only ever asks for one
++    // page, so this clamp is purely defensive.
++    if (count > flash_size - offset) {
++        count = flash_size - offset;
++    }
++    save_read(PASS_RDRAM dramAddr, offset, count);
+ 
+     // Signal completion to the caller's queue.
+     s32 sent = osSendMesg(PASS_RDRAM mq, 0, OS_MESG_NOBLOCK);

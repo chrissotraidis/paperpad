@@ -1,5 +1,5 @@
 diff --git a/ultramodern/src/events.cpp b/ultramodern/src/events.cpp
-index a101a5d..c754745 100644
+index a101a5d..6c223f3 100644
 --- a/ultramodern/src/events.cpp
 +++ b/ultramodern/src/events.cpp
 @@ -59,15 +59,15 @@ struct UpdateConfigAction {
@@ -27,7 +27,7 @@ index a101a5d..c754745 100644
  
  #define VI_STATE_BLACK 0x20
  #define VI_STATE_REPEATLINE 0x40
-@@ -875,22 +875,35 @@ void vi_thread_func() {
+@@ -875,22 +875,24 @@ void vi_thread_func() {
              }
          }
  
@@ -42,17 +42,6 @@ index a101a5d..c754745 100644
 +        if (ultramodern::is_game_started()) {
 +            remaining_retraces--;
 +            is_guest_retrace = (remaining_retraces == 0);
-+        }
-+
-+        // Hand the current VI register state to the graphics thread as a screen
-+        // update, but only at the game's own frame cadence. Presenting at a
-+        // fixed host 60Hz against a 30fps frame that Paper Mario builds with
-+        // multiple gfx tasks shows the half-built framebuffer (the visible
-+        // full/partial flashing).
-+        if (is_guest_retrace) {
-+            // Issuing it before update_vi() matches presenting the previous
-+            // frame once its scanout has finished.
-+            events_context.action_queue.enqueue(ScreenUpdateAction{ events_context.vi.regs });
 +        }
  
          // Advance the VI registers and flip to the next field/state.
@@ -70,7 +59,7 @@ index a101a5d..c754745 100644
                  if (cur_state->mq != NULLPTR) {
                      // VI retrace is COALESCIBLE: droppable on a full guest queue.
                      // This is what stops a 60Hz retrace flood from starving the
-@@ -1120,6 +1133,12 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+@@ -1120,6 +1122,12 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
          if (events_context.action_queue.wait_dequeue_timed(action, 1ms)) {
              // Dispatch on the action variant.
              if (const auto* task_action = std::get_if<SpTaskAction>(&action)) {
@@ -83,7 +72,7 @@ index a101a5d..c754745 100644
                  // Enable instant present the first time a task arrives after the game starts.
                  if (ultramodern::is_game_started() && !enabled_instant_present) {
                      renderer_context->enable_instant_present();
-@@ -1157,6 +1176,14 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+@@ -1157,6 +1165,14 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
                          std::memory_order_relaxed);
                      g_current_dl_entry_seq.fetch_add(1, std::memory_order_release);
                  }
@@ -98,7 +87,7 @@ index a101a5d..c754745 100644
                  renderer_context->send_dl(&task_action->task);
  #ifdef N64_COSIM
                  if (task_action->cosim_gfx_seq != 0) {
-@@ -1184,6 +1211,17 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
+@@ -1184,6 +1200,17 @@ void gfx_thread_func(uint8_t* rdram, moodycamel::LightweightSemaphore* thread_re
  #ifndef N64_COSIM
                  dp_complete(task_action->task.t.type);
  #endif
