@@ -38,6 +38,16 @@ if (APPLE)
     set(RT64_SDL_WINDOW_VULKAN FALSE CACHE BOOL "Use SDL windows for RT64 Vulkan" FORCE)
 endif()
 add_compile_definitions(HLSL_CPU)
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    # Vendored SDL2 2.32.10 static (built from build-ios-deps/sources) for the
+    # macOS runner; avoids the Homebrew sdl2-compat shim (SDL3 underneath) that
+    # hangs in SDL_ShowWindow's Cocoa restore path. RT64 consumes these vars.
+    set(PAPERPAD_SDL2_STATIC_DIR "${PAPERPAD_ROOT}/build-macos-sdl2" CACHE PATH "Vendored SDL2 static build dir (macOS)")
+    if (EXISTS "${PAPERPAD_SDL2_STATIC_DIR}/libSDL2.a")
+        set(SDL2_INCLUDE_DIRS "${PAPERPAD_ROOT}/build-ios-deps/sources/include")
+        set(SDL2_LIBRARIES "${PAPERPAD_SDL2_STATIC_DIR}/libSDL2.a")
+    endif()
+endif()
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(RT64_BUILD_TOOLS OFF CACHE BOOL "RT64 host tools" FORCE)
     set(PAPERPAD_IOS_DIR "${PAPERPAD_ROOT}/apple/app" CACHE PATH "PaperPad iOS shell sources")
@@ -71,10 +81,6 @@ target_include_directories(RecompiledFuncs PRIVATE
     "${PAPERPAD_RUNTIME}/librecomp/include"
     "${PAPERPAD_RUNTIME}/N64Recomp/include"
 )
-
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
-    find_package(SDL2 REQUIRED)
-endif()
 
 add_executable(PaperPad
     src/paperpad_main.cpp
@@ -134,6 +140,7 @@ target_include_directories(PaperPad PRIVATE
     "${PAPERPAD_RENDERER}/src/rhi"
     "${PAPERPAD_RENDERER}/src/render"
     "${CMAKE_BINARY_DIR}/rt64/src"
+    "${SDL2_INCLUDE_DIRS}"
 )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -151,5 +158,14 @@ target_link_libraries(PaperPad PRIVATE
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_link_libraries(PaperPad PRIVATE SDL2::SDL2-static "-framework UIKit -framework Metal -framework QuartzCore -framework CoreGraphics -framework Foundation -framework UniformTypeIdentifiers")
 else()
-    target_link_libraries(PaperPad PRIVATE SDL2::SDL2)
+    # Use the vendored SDL2 2.32.10 static build (same source as the iOS
+    # target) instead of the Homebrew sdl2-compat shim (SDL3 underneath),
+    # which can hang in SDL_ShowWindow's Cocoa restore path.
+    set(PAPERPAD_SDL2_STATIC_DIR "${PAPERPAD_ROOT}/build-macos-sdl2" CACHE PATH "Vendored SDL2 static build dir (macOS)")
+    if (EXISTS "${PAPERPAD_SDL2_STATIC_DIR}/libSDL2.a")
+        target_link_libraries(PaperPad PRIVATE "${PAPERPAD_SDL2_STATIC_DIR}/libSDL2.a"
+            "-framework Cocoa -framework CoreVideo -framework IOKit -framework ForceFeedback -framework Carbon -framework CoreGraphics -framework AudioToolbox -framework CoreAudio -framework GameController -framework CoreHaptics")
+    else()
+        target_link_libraries(PaperPad PRIVATE SDL2::SDL2)
+    endif()
 endif()

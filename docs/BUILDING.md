@@ -23,6 +23,39 @@ sideband packet" and no server message. Verified empirically:
 - When adding evidence images, prefer small crops/thumbnails and push in
   small increments.
 
+## Vendored SDL2 for macOS (learned 2026-08-05)
+
+The macOS runner no longer links Homebrew's `sdl2-compat` shim (an SDL3
+wrapper that hung in `SDL_ShowWindow`). It links a vendored SDL2 2.32.10
+static library built from `build-ios-deps/sources` (the same source the iOS
+target uses):
+
+```
+cmake -S build-ios-deps/sources -B build-macos-sdl2 \
+  -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TEST=OFF -DSDL_TESTS=OFF \
+  -DCMAKE_BUILD_TYPE=Release
+cmake --build build-macos-sdl2 --target SDL2-static -j 8
+```
+
+`CMakeLists.txt` picks it up automatically when `build-macos-sdl2/libSDL2.a`
+exists; RT64 consumes `SDL2_INCLUDE_DIRS`/`SDL2_LIBRARIES` pointing at it.
+
+## Local runtime patches (not committed)
+
+Three surgical edits live in `ref/mstan-n64modernruntime/ultramodern/src/`
+(the gitignored reference checkout) to keep the game playing through the
+intro:
+
+- `scheduler_tick.cpp`: the monitor thread drains pending external messages
+  every 50ms (retrace/completion pump).
+- `mesgqueue.cpp`: `do_send` signals a blocked receiver's host semaphore when
+  the sender is a host thread.
+- `threads.cpp`: `run_next_thread` waits on the external-message queue instead
+  of throwing when the running queue is empty.
+
+These are not committed (ref/ is gitignored); re-apply them after refreshing
+the checkout. Full rationale in `KNOWN-ISSUES.md` macOS #5.
+
 ## Prerequisites
 
 - Apple Silicon Mac, macOS 26.x (this checkout: 26.5.2).

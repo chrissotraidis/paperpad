@@ -37,6 +37,14 @@
 
 #include "paperpad_input.h"
 
+// Runtime health counters (mstan N64ModernRuntime) for freeze diagnosis.
+extern "C" uint64_t ultramodern_submit_gfx_count(void);
+extern "C" uint64_t ultramodern_submit_audio_count(void);
+extern "C" uint64_t ultramodern_submit_other_count(void);
+extern "C" uint64_t ultramodern_sp_complete_count(void);
+extern "C" uint64_t ultramodern_dp_complete_count(void);
+bool ultramodern::external_message_pending();
+
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y);
 extern "C" void paperpad_touch_attach(void* ui_window);
@@ -619,6 +627,20 @@ namespace {
 
     RspUcodeFunc* get_rsp_microcode(uint8_t* rdram, const OSTask* task) {
         (void)rdram;
+        // Audio (aspMain) tasks currently make the recompiled RSP ucode stall
+        // mid-task on iOS (and flood errors on macOS), which can wedge the boot
+        // pipeline while the gfx manager waits on an audio SP completion.
+        // PAPERPAD_DROP_AUDIO_RSP=1 routes audio tasks through the runtime's
+        // graceful drop path (signals SP completion without running the ucode),
+        // letting the game boot and play silently. Audio remains unverified;
+        // this is the documented workaround until the ucode stall is fixed.
+        static const bool drop_audio_rsp = []() {
+            const char* v = std::getenv("PAPERPAD_DROP_AUDIO_RSP");
+            return v != nullptr && v[0] != '\0' && v[0] != '0';
+        }();
+        if (drop_audio_rsp && task->t.type == M_AUDTASK) {
+            return nullptr;
+        }
         if (task->t.type == M_AUDTASK) {
             return n_aspMain;
         }
@@ -723,6 +745,31 @@ extern "C"
 #endif
 int PAPERPAD_MAIN(int argc, char** argv) {
     setvbuf(stderr, nullptr, _IONBF, 0);
+    // Periodic host-side health log: game-thread task submission vs
+    // completion counters + external message backlog. Lets a freeze be
+    // characterized as "game not submitting" vs "stuck downstream".
+    std::thread([]() {
+        uint64_t last_gfx = 0, last_sp = 0, last_dp = 0, last_audio = 0;
+        FILE* hf = std::fopen((app_config_path() / "health.log").string().c_str(), "a");
+        FILE* health_f = hf ? hf : stderr;
+        for (int i = 0; ; ++i) {
+            std::this_thread::sleep_for(std::chrono::seconds(2));
+            uint64_t gfx = ultramodern_submit_gfx_count();
+            uint64_t audio = ultramodern_submit_audio_count();
+            uint64_t sp = ultramodern_sp_complete_count();
+            uint64_t dp = ultramodern_dp_complete_count();
+            std::fprintf(health_f,
+                "[health] t=%lld gfx=+%llu audio=+%llu sp=+%llu dp=+%llu ext_pending=%d\n",
+                (long long)(i * 2),
+                (unsigned long long)(gfx - last_gfx),
+                (unsigned long long)(audio - last_audio),
+                (unsigned long long)(sp - last_sp),
+                (unsigned long long)(dp - last_dp),
+                ultramodern::external_message_pending() ? 1 : 0);
+            std::fflush(health_f);
+            last_gfx = gfx; last_audio = audio; last_sp = sp; last_dp = dp;
+        }
+    }).detach();
 #if defined(__APPLE__)
     // RT64's automatic API selection prefers D3D12; on Apple, Metal is the
     // supported RHI and must be selected explicitly.

@@ -1,6 +1,6 @@
 # PaperPad known issues
 
-Updated 2026-08-05 18:30.
+Updated 2026-08-05 21:30.
 
 ## macOS
 
@@ -11,6 +11,12 @@ Updated 2026-08-05 18:30.
    completion), but the stderr flood slows startup and audio is unverified.
    Recurrence varies by run (0–3500 errors); a fresh 2026-08-05 rebuild
    reproduced 1677 errors while the game kept rendering.
+
+   Status 2026-08-05 21:30: with the local runtime patches the flood still
+   occurs but the game now plays the intro for 1-3 minutes; the audio ucode
+   (n_aspMain) grinds/stalls on a per-task basis (DMA copies crawl at
+   ~200 bytes/sec when the game starts freezing), which is downstream of the
+   scheduler deadlock below rather than the root cause.
 
 2. **Teardown autorelease crash** — RT64 Workload/Present worker threads can
    crash in `objc_autoreleasePoolPop` when the process exits. This is a
@@ -26,6 +32,41 @@ Updated 2026-08-05 18:30.
 
 4. **No touch controls on macOS** — the touch overlay is an iOS feature;
    macOS uses keyboard/gamepad.
+
+5. **Intro freezes at a scene transition (primary blocker, 2026-08-05)** —
+   the game plays the N64 logo, star scene, and first story cutscene at
+   ~60fps for 1-3 minutes, then freezes on a black/transition screen. Root
+   cause (verified with instrumentation): the mstan runtime's cooperative
+   scheduler deadlocks when every game thread parks in `osRecvMesg`
+   (`do_recv` → `run_next_thread_and_wait` → host semaphore). The VI thread
+   keeps posting retraces (60/s) into the runtime's external-message queue,
+   but no game thread runs to drain/deliver them, so `nuScEventHandler`
+   never receives a retrace, `gfxRetrace_Callback` stops calling
+   `step_game_loop`, and the game freezes.
+
+   Local runtime patches that substantially help (applied in
+   `ref/mstan-n64modernruntime`, not committed):
+   - `scheduler_tick.cpp`: the monitor thread now drains one pending external
+     message per 50ms tick (the "pump"), so retraces/completions reach the
+     guest queues even when all game threads are parked.
+   - `mesgqueue.cpp`: `do_send` wakes a blocked receiver's host semaphore when
+     the sender is a host thread (the pump), because the cooperative scheduler
+     only does that handoff when a game thread runs it.
+   - `threads.cpp`: `run_next_thread` waits on the external-message queue
+     instead of throwing "No runnable threads remain" when the running queue
+     is empty.
+
+   Result: the game went from freezing at ~40s (N64 logo) to playing the intro
+   for 1-3 minutes. The deadlock still re-triggers at the scene transition;
+   the delivery now succeeds (do_send sent=1) but the game freezes shortly
+   after, suggesting a secondary stall (asset DMA load, or the audio ucode
+   grind starving the pump's wake) not yet root-caused.
+
+6. **macOS launch hung in SDL_ShowWindow (fixed)** — the app linked Homebrew's
+   `sdl2-compat` 2.32.70 (an SDL3 shim), which hung in
+   `SDL_CreateWindow → SDL_ShowWindow → Cocoa_ShowWindow → SDL_RestoreWindow`.
+   Fixed by building the vendored SDL2 2.32.10 static (`build-macos-sdl2/`)
+   and linking it for the macOS target (same source as the iOS static build).
 
 ## Cross-cutting
 

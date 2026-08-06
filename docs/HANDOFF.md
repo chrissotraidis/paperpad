@@ -1,16 +1,20 @@
 # PaperPad handoff
 
-Latest: 2026-08-05 18:30 (America/Chicago). See `STATUS.md` for the
+Latest: 2026-08-05 21:30 (America/Chicago). See `STATUS.md` for the
 authoritative status table, `TESTING.md` for evidence, and `KNOWN-ISSUES.md`
 for the full issue list.
 
 ## What works
 
-- **macOS app plays Paper Mario's intro** (50-60fps): decomp
+- **macOS app launches reliably and plays Paper Mario's intro** (logo, star
+  scene, first cutscene, ~60fps for 1-3 minutes): decomp
   (`ref/papermario` pmret @ `c61db66`) -> AOT
   (`generated/aot/paper_mario_recomp_out/`) -> mstan N64ModernRuntime + RT64
   (both pinned + AnnePad patches in `ref/mstan-*`) -> SDL2/Metal runner
-  (`src/paperpad_main.cpp`). Evidence: `docs/evidence/macos-opening-scene.png`.
+  (`src/paperpad_main.cpp`) with vendored static SDL2 2.32.10 and three local
+  runtime patches (see `KNOWN-ISSUES.md` macOS #5 and `BUILDING.md`).
+  Evidence: `docs/evidence/macos-opening-scene.png` and 2026-08-05 21:0x
+  cutscene captures.
 - **iPhone Simulator app builds, installs, launches, and renders** the intro
   under Metal with the Paper Mario touch overlay (stick, D-pad, A/B/Z,
   C-buttons, L/R, START). Evidence: `docs/evidence/ios-iphone-running.png`,
@@ -24,11 +28,13 @@ for the full issue list.
 
 ## What does not work
 
-- **iOS boot freezes mid-intro (blocking)**: audio RSP task flood
-  (`n_aspMain` UnhandledJumpTarget, exit_reason 3) never clears on iOS - the
-  ucode never returns, so ultramodern's graceful drop path never runs. macOS
-  survives the same flood; the behavioral difference is unresolved. Full
-  analysis in `KNOWN-ISSUES.md` iOS #1.
+- **Game freezes at a scene transition 1-3 minutes into the intro (primary
+  blocker, both platforms)**: the mstan cooperative scheduler deadlocks when
+  every game thread parks in `osRecvMesg`. Host-delivered retraces land in the
+  guest queue but no game thread is resumed, so `step_game_loop` stops being
+  called. The audio RSP ucode grind (`n_aspMain` UnhandledJumpTarget /
+  crawl) is a downstream symptom. Full analysis in `KNOWN-ISSUES.md` macOS
+  #5.
 - Audio is unverified everywhere (RSP flood on both platforms; macOS reaches
   gameplay anyway).
 - macOS teardown crashes in RT64 worker autorelease cleanup
@@ -39,22 +45,27 @@ for the full issue list.
 
 ## Next highest-priority task
 
-Fix the iOS audio RSP stall so boot completes, then verify an agent-driven
-playthrough on iPhone Simulator and repeat on iPad Simulator (one Simulator at
-a time). Candidate fixes are in `KNOWN-ISSUES.md` iOS #1; start by confirming
-whether `n_aspMain_impl` is stuck in the PC 0x10EC loop (watchdog path never
-trips) or simply not returning from command dispatch, then test the drop-path
-mitigation (treat repeated UnhandledJumpTarget as task completion) to confirm
-the game is otherwise playable on iOS.
+Fix the cooperative-scheduler deadlock at the intro's scene transition so the
+game reaches the title screen and gameplay, then verify an agent-driven
+playthrough on macOS, iPhone Simulator, and iPad Simulator (one Simulator at a
+time). The local runtime patches (monitor pump, host-side wake, scheduler
+wait) extend the intro from ~40s to 1-3 minutes but don't fully resolve it;
+the next hypothesis to test is a secondary stall at the scene-transition
+asset DMA load (the `dma_copy`/PI path) or the audio ucode grind starving the
+pump's wake. See `KNOWN-ISSUES.md` macOS #5.
 
 ## How to reproduce each issue
 
-- **iOS boot freeze**: boot "iPhone 16 Pro", install
+- **Intro freeze (macOS)**: `build-macos2/PaperPad.app/Contents/MacOS/PaperPad
+  generated/rom/baserom.z64` (or `open build-macos2/PaperPad.app` with the ROM
+  at `~/Library/Application Support/pm.n64.us.z64`), wait 1-3 min - the intro
+  plays then freezes on a black/transition screen; `[sgl]` stops advancing and
+  the health log shows `gfx=+0`.
+- **Intro freeze (iOS)**: boot "iPhone 16 Pro", install
   `build-ios-sim/Release/PaperPad.app`, ensure
   `<data>/Library/Application Support/PaperPad/baserom.z64` exists (copy from
   `generated/rom/`), `xcrun simctl launch <udid> com.chrissotraidis.paperpad`,
-  wait 60 s - intro freezes at the gold/red star-spawn frame; `[gfx] send_dl`
-  stops at 1201 while the RSP flood continues.
+  wait 1-3 min - intro freezes at a scene transition.
 - **macOS teardown crash**: run the app, quit; capture with
   `scripts/capture-crashes.sh`.
 - **macOS audio RSP flood**: run the app with stderr captured; the
