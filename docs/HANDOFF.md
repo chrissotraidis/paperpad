@@ -23,17 +23,34 @@ for the full issue list.
   target", and eventually spins forever — freezing the game). HLE processes
   the same OSTask reliably. Patch: `patches/mstan-n64modernruntime/
   hle-audio-rsp.patch`; dependency vendored at `ref/mupen64plus-rsp-hle`.
-- **Screen flashing fixed (2026-08-06)**: the full/partial frame alternation
-  during 30fps cutscenes (the storybook flashing between the complete scene
-  and the bare starfield) is gone. Root cause: Paper Mario builds each frame
-  with two gfx tasks and the present could land between them, drawing the
-  half-built target. Fix: the present waits for the frame's main task (odd
-  workload id + early notify + 16ms bound) and the runtime presents at the
-  game's frame cadence. Verified on macOS and iPad: frame analysis dropped
-  from 253 alternations/32s to 4 changes/55s (the rest are intended page
-  transitions), gfx steady at 60fps. Patches: `patches/mstan-rt64/
-  present-wait-workload.patch`, `patches/mstan-n64modernruntime/
-  vi-screen-update-cadence.patch`.
+- **Screen flashing fully fixed (2026-08-06, final)**: the full/partial
+  frame alternation during 30fps cutscenes (the storybook flashing between
+  the complete scene and the bare star sanctuary, which persisted through
+  the earlier wait-for-main-task fix) is gone. Final root cause: the VI
+  retrace present could still land between Paper Mario's two per-frame gfx
+  tasks (background + main swap task) and time out its 16ms wait for the
+  main task, drawing the half-built background. Final fix: REMOVED the
+  VI-thread retrace present entirely; the only present now fires at the
+  swap-task boundary (`flags & 0x4`, after `dp_complete`), which is exactly
+  the frame-complete moment — a present can never land mid-frame again.
+  `RT64_PRESENT_LOG` shows exactly one present per frame, and 45-frame
+  screenshot bursts through the logos → intro → storybook show zero
+  repeated/identical frames (previously 6/40 were the identical 0.1818
+  stale frame); the storybook's dark pages are real content, each unique.
+  Patches: `patches/mstan-rt64/present-wait-workload.patch` (defensive),
+  `patches/mstan-n64modernruntime/vi-screen-update-cadence.patch`.
+- **File-select crash on an empty flash card fixed (2026-08-06)**: a fresh
+  install crashed with SIGBUS in `save_read` every time the game reached
+  the file-select screen with no saved games (macOS crash
+  `PaperPad-2026-08-06-073051.ips`, stack `filemenu_init ->
+  fio_load_game -> fio_read_flash -> osFlashReadArray_recomp ->
+  save_read`). The game reads empty slots with `page_num = -1`; the real
+  flash chip wraps the resulting byte offset, but the host recomp indexed
+  the flat save buffer out of bounds. Fix
+  (`patches/mstan-n64modernruntime/flash-page-wrap.patch`): mask the page
+  number to the chip's page count so out-of-range reads wrap into erased
+  (0xFF) flash and the checksum check fails gracefully. Verified: macOS
+  boots → title → file select → new-game creation → Mario's House gameplay.
 - **iPhone Simulator app builds, installs, launches, and reaches Toad Town
   gameplay** under Metal with the Paper Mario touch overlay (stick, D-pad,
   A/B/Z, C-buttons, L/R, START). Health log stable to t=450 (7.5+ minutes),
@@ -73,7 +90,8 @@ for the full issue list.
   writes mixed output, but no speaker/device proof yet (host SDL audio path
   needs a listen check or AI-buffer sample verification).
 - macOS teardown crashes in RT64 worker autorelease cleanup
-  (`objc_autoreleasePoolPop`); gameplay unaffected.
+  (`objc_autoreleasePoolPop`); gameplay unaffected. Reproduced again
+  2026-08-06 07:51:46 (`PaperPad-2026-08-06-075155.ips`).
 - Audible proof on real speakers/device still pending (the SDL queue
   demonstrably carries audio, but no listen test on hardware speakers yet).
 - Touch input beyond overlay visibility is untested on iOS (no simctl touch
@@ -86,12 +104,11 @@ for the full issue list.
 
 ## Next highest-priority task
 
-Drive the iPad through a full playthrough (title screen → storybook →
-gameplay; use the title-screen demo mode or XCUITest for input since simctl
-has no touch injection), then confirm audible audio, then drive a longer
-agent playthrough on each target (walk Mario, enter a building, trigger a
-text box and a battle) to catch gameplay-era stalls. See `STATUS.md` → Next
-milestone.
+Re-verify the iPhone Simulator with the final present fix (only one
+Simulator at a time — currently verified on iPad and macOS), then drive a
+longer agent playthrough on each target (walk Mario, enter a building,
+trigger a text box and a battle) to catch gameplay-era stalls, and confirm
+audible audio on real speakers. See `STATUS.md` → Next milestone.
 
 ## How to reproduce each issue
 

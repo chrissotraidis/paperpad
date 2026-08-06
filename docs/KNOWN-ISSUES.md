@@ -214,22 +214,55 @@ Updated 2026-08-05 23:55.
    The settings sheet offers Auto/2x resolution and Original/Expand aspect.
 
 5. **Screen flashed full/partial frames during 30fps cutscenes (FIXED
-   2026-08-06)** — the visible image alternated between the complete scene
-   and the half-built background (e.g. the storybook page vs the bare
-   starfield) at ~30Hz. Root cause: Paper Mario builds each frame with two
-   gfx tasks (a background task that also renders to a temp buffer, then the
-   main task), and the VI retrace can fire between them. The RT64 present
-   created mid-frame covered only the background workload and drew the
-   half-built target. Fix (commit pending): the present, when its workload id
-   is odd (mid-frame), notifies its present id early (so the frame's main
-   task can proceed) and waits up to 16ms for the main task's workload before
-   drawing. Also, the runtime's VI thread only emits screen updates at the
-   game's own frame cadence (retrace-aligned) instead of a fixed 60Hz.
+   2026-08-06, final fix)** — the visible image alternated between the
+   complete scene and a stale/half-built framebuffer (the bare star
+   sanctuary, exactly 0.1818 mean brightness, re-appearing every few seconds
+   during the intro cutscene). Root cause: two independent present paths
+   fired per frame — the VI-thread retrace present (at the guest frame
+   cadence) and the gfx-thread present after the swap task. The retrace
+   present could land BETWEEN Paper Mario's two gfx tasks per frame (the
+   background task and the main swap task), and the RT64 present queue's
+   16ms bounded wait for the main task could time out on slow frames, so the
+   half-built background was drawn to the display.
+
+   Final fix: the VI-thread retrace present was REMOVED entirely; the only
+   present now fires at the swap-task boundary (`flags & 0x4`,
+   `NU_SC_SWAPBUFFER`) — the exact moment a frame's RDP completes — so a
+   present can never land mid-frame. Every Paper Mario frame ends with a
+   swap task (verified across boot logos, intro cutscene, and menus), so no
+   present is ever missed. The RT64 odd-workload wait patch remains as a
+   defensive bound but is no longer on the hot path.
    Patches: `patches/mstan-rt64/present-wait-workload.patch`,
-   `patches/mstan-n64modernruntime/vi-screen-update-cadence.patch`. Verified:
-   frame-brightness analysis dropped from 253 changes/32s to 4 changes/55s
-   (the remaining are intended storybook page transitions); gfx stays at
-   60fps with no pipeline stall.
+   `patches/mstan-n64modernruntime/vi-screen-update-cadence.patch` (removed
+   the retrace present). Verified 2026-08-06 on iPad and macOS:
+   `RT64_PRESENT_LOG` shows exactly one present per frame at the swap task,
+   and two screenshot bursts (45 frames each) through the logos → intro →
+   storybook show NO repeated/identical frames (previously 6/40 samples were
+   the identical 0.1818 stale frame); dark frames in the new bursts are the
+   storybook's own dark pages, each unique, and brightness changes smoothly
+   with the cutscene. gfx stays at 60fps.
+
+6. **Crash at the file-select screen on an empty flash card (FIXED
+   2026-08-06)** — a fresh macOS/iOS install crashed with SIGBUS in
+   `save_read` (`EXC_BAD_ACCESS KERN_PROTECTION_FAILURE` at a wild address)
+   every time the game reached the file-select screen with no saved games.
+   Stack: `state_step_file_select -> filemenu_init -> fio_load_game ->
+   fio_read_flash -> osFlashReadArray_recomp -> save_read`. Root cause:
+   `filemenu_init` calls `fio_load_game(i)` for every slot; on an empty card
+   `LogicalSaveInfo[i].slot == -1`, so the game calls
+   `osFlashReadArray(page_num = -1 * 128)` and the real flash chip ignores
+   the high address bits (the SDK multiplies the page index by 0x80 into a
+   32-bit byte offset that wraps). The host flash recomp functions indexed
+   the flat 128 KiB save buffer with the un-wrapped offset, reading far out
+   of bounds. Fix (`patches/mstan-n64modernruntime/flash-page-wrap.patch`):
+   `flash_page_offset(page_num)` masks the page number to
+   `page_count - 1` (1023), matching the chip's address decode, so the
+   out-of-range read wraps into erased (0xFF) flash and the game's checksum
+   validation fails gracefully (empty slot). Also clamps read length to the
+   flash end. Verified: macOS boots → title → file select → new-game
+   creation → Mario's House gameplay without crashing (previously crashed
+   37s after launch, every time). The crash log is
+   `~/Library/Logs/DiagnosticReports/PaperPad-2026-08-06-073051.ips`.
 
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG

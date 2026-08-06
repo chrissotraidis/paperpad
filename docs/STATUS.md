@@ -1,6 +1,18 @@
 # PaperPad status
 
-Updated 2026-08-05 23:55 (America/Chicago). Target-by-target status.
+Updated 2026-08-06 08:15 (America/Chicago). Target-by-target status.
+
+Latest fixes (2026-08-06):
+- **Screen flashing fully fixed**: removed the VI-retrace present; the only
+  present now fires at the swap-task (frame-complete) boundary. Verified on
+  iPad and macOS: one present per frame, zero repeated/stale frames across
+  90 captured frames of the boot → intro → storybook sequence
+  (`docs/TESTING.md` 08:0x rows; `docs/KNOWN-ISSUES.md` #5).
+- **File-select crash on an empty flash card fixed**: flash page numbers are
+  now masked to the chip's page count, so empty-slot reads (`page_num = -1`)
+  wrap into erased flash and fail the checksum gracefully instead of
+  crashing `save_read` (SIGBUS). Verified macOS: fresh card → title → file
+  select → new game → Mario's House gameplay (`docs/KNOWN-ISSUES.md` #6).
 
 | Target | Status | Evidence |
 |---|---|---|
