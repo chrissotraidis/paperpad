@@ -63,6 +63,13 @@ extern "C" void osUnmapTLB_recomp(uint8_t*, recomp_context* ctx) {
     tlb_entries[index] = {};
 }
 
+// Paper Mario only uses this OS routine for IS Viewer debug output. Retail
+// gameplay does not need a backing PI device, but the recomp symbol must
+// return success just like the pinned ReCut runner.
+extern "C" void osEPiWriteIo_recomp(uint8_t*, recomp_context* ctx) {
+    ctx->r2 = 0;
+}
+
 
 
 // The mstan runtime's sp-task ring references PSR diagnostic counters;

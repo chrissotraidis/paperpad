@@ -1,0 +1,79 @@
+diff --git a/lib/rt64/CMakeLists.txt b/lib/rt64/CMakeLists.txt
+--- a/lib/rt64/CMakeLists.txt
++++ b/lib/rt64/CMakeLists.txt
+@@ -111,6 +111,12 @@ set(ANDROID_ABI arm64-v8a)
+ 
+ # For DXC
+ set (DXC_COMMON_OPTS "-I${PROJECT_SOURCE_DIR}/src")
++if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
++    # Apple mobile GPUs and Simulator expose at most 16 samplers per shader.
++    # RT64's optional native-sampler fast path declares 18 combinations; use
++    # the renderer's accurate software addressing/filtering path on iOS.
++    list(APPEND DXC_COMMON_OPTS "-D" "RT64_DISABLE_NATIVE_SAMPLERS=1")
++endif()
+ set (DXC_DXIL_OPTS "-Wno-ignored-attributes")
+ set (DXC_SPV_OPTS "-spirv" "-fspv-target-env=vulkan1.0" "-fvk-use-dx-layout")
+ set (DXC_LB_OPTS "${DXC_COMMON_OPTS}" "-D" "LIBRARY" "-T" "lib_6_3")
+diff --git a/lib/rt64/src/shaders/TextureSampler.hlsli b/lib/rt64/src/shaders/TextureSampler.hlsli
+--- a/lib/rt64/src/shaders/TextureSampler.hlsli
++++ b/lib/rt64/src/shaders/TextureSampler.hlsli
+@@ -111,6 +111,11 @@ float4 clampWrapMirrorSample(const RDPTile rdpTile, const GPUTile gpuTile, float
+ static const float LowPrecision = 128.0f;
+ 
+ float4 sampleTextureNative(Texture2D texture, uint nativeSampler, int2 texelBaseInt, float2 textureSize) {
++#if defined(RT64_DISABLE_NATIVE_SAMPLERS)
++    // Mobile Metal uses the RDP-compatible software sampling path below. Keep
++    // this helper sampler-free so DXC removes all 18 immutable sampler slots.
++    return texture.Load(int3(texelBaseInt, 0));
++#else
+     // Transform to native coordinate. Half pixel offset is required to reach the desired texel.
+     float2 nativeUVCoord = (float2(texelBaseInt) + 0.5f) / textureSize;
+             
+@@ -136,6 +141,7 @@ float4 sampleTextureNative(Texture2D texture, uint nativeSampler, int2 texelBase
+         default:
+             return texture.SampleLevel(gNearestClampClampSampler, nativeUVCoord, 0.0f);
+     }
++#endif
+ }
+ 
+ float4 sampleTextureLevel(const RDPTile rdpTile, const GPUTile gpuTile, bool filterBilerp, bool filterAverage, bool linearFiltering, float2 uvCoord, uint tlut, bool canDecodeTMEM, uint mipLevel, bool usesHDR) {
+@@ -147,7 +153,11 @@ float4 sampleTextureLevel(const RDPTile rdpTile, const GPUTile gpuTile, bool fil
+     int2 texelBaseInt = floor(uvCoord);
+     bool filtering = or(filterBilerp, linearFiltering);
+     float4 samples[4];
++#if defined(RT64_DISABLE_NATIVE_SAMPLERS)
++    const uint nativeSampler = NATIVE_SAMPLER_NONE;
++#else
+     const uint nativeSampler = rdpTile.nativeSampler;
++#endif
+     bool gpuTileUsesTMEM = canDecodeTMEM && gpuTileFlagRawTMEM(gpuTile.flags);
+     if ((nativeSampler == NATIVE_SAMPLER_NONE) || gpuTileUsesTMEM) {
+ #if USE_FOR_LOOPS
+@@ -261,7 +271,11 @@ float4 sampleTexture(OtherMode otherMode, RenderFlags renderFlags, float2 inputU
+     const uint tlut = otherMode.textLUT();
+     const bool canDecodeTMEM = renderFlagCanDecodeTMEM(renderFlags);
+     const bool usesHDR = renderFlagUsesHDR(renderFlags);
++#if defined(RT64_DISABLE_NATIVE_SAMPLERS)
++    const uint nativeSampler = NATIVE_SAMPLER_NONE;
++#else
+     const uint nativeSampler = rdpTile.nativeSampler;
++#endif
+     const bool flagHasMipmaps = gpuTileFlagHasMipmaps(gpuTile.flags);
+     uint numRDPSamples = 0;
+     uint RDPMipLevels[2];
+@@ -285,6 +299,7 @@ float4 sampleTexture(OtherMode otherMode, RenderFlags renderFlags, float2 inputU
+             numRDPSamples = 2;
+         }
+         else {
++#if !defined(RT64_DISABLE_NATIVE_SAMPLERS)
+             // Must normalize the texture coordinate and the derivatives.
+             float2 nativeUVCoord = uvCoord / gpuTile.textureDimensions.xy;
+             float2 originalSize = gpuTile.textureDimensions.xy / gpuTile.tcScale;
+@@ -313,6 +328,7 @@ float4 sampleTexture(OtherMode otherMode, RenderFlags renderFlags, float2 inputU
+                 default:
+                     return texture.SampleGrad(gLinearClampClampSampler, nativeUVCoord, ddxUVxNorm, ddxUVyNorm);
+             }
++#endif
+         }
+     }
+     else {

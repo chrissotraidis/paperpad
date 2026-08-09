@@ -1,0 +1,15 @@
+diff --git a/lib/rt64/CMakeLists.txt b/lib/rt64/CMakeLists.txt
+index 79228d3..a2efad1 100644
+--- a/lib/rt64/CMakeLists.txt
++++ b/lib/rt64/CMakeLists.txt
+@@ -287,7 +287,9 @@ if (WIN32)
+     set(SDL2_LIBRARIES "SDL2" "SDL2main")
+     link_directories("${PROJECT_SOURCE_DIR}/src/contrib/mupen64plus-win32-deps/SDL2-2.26.3/lib/x64")
+ else()
+-    find_package(SDL2 REQUIRED)
++    if (NOT SDL2_INCLUDE_DIRS OR NOT SDL2_LIBRARIES)
++        find_package(SDL2 REQUIRED)
++    endif()
+ endif()
+ 
+ message(STATUS "${SDL2_INCLUDE_DIRS} ${SDL2_LIBRARIES}")

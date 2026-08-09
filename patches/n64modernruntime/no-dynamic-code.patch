@@ -1,0 +1,118 @@
+diff --git a/lib/N64ModernRuntime/librecomp/CMakeLists.txt b/lib/N64ModernRuntime/librecomp/CMakeLists.txt
+--- a/lib/N64ModernRuntime/librecomp/CMakeLists.txt
++++ b/lib/N64ModernRuntime/librecomp/CMakeLists.txt
+@@ -4,6 +4,7 @@ project(librecomp)
+ set(CMAKE_CXX_STANDARD 20)
+ set(CMAKE_CXX_STANDARD_REQUIRED True)
+ set(CMAKE_CXX_EXTENSIONS OFF)
++option(N64MODERN_NO_DYNAMIC_CODE "Compile out runtime code generation and dynamic-library loading" OFF)
+ set(MUPEN_RSP_HLE_DIR "${PROJECT_SOURCE_DIR}/../../../../mupen64plus-rsp-hle")
+ set(PARALLEL_RSP_DIR "${PROJECT_SOURCE_DIR}/../../../../parallel-n64/mupen64plus-rsp-paraLLEl")
+ set(PARALLEL_RSP_BUILD_DIR "${PROJECT_SOURCE_DIR}/../../../../parallel-n64/build-rsp-clang")
+@@ -81,5 +82,11 @@ endif()
+ add_subdirectory(${PROJECT_SOURCE_DIR}/../thirdparty/miniz ${CMAKE_CURRENT_BINARY_DIR}/miniz)
+ add_subdirectory(${PROJECT_SOURCE_DIR}/../N64Recomp ${CMAKE_CURRENT_BINARY_DIR}/N64Recomp EXCLUDE_FROM_ALL)
+ 
+-target_link_libraries(librecomp PRIVATE ultramodern N64Recomp LiveRecomp)
++target_link_libraries(librecomp PRIVATE ultramodern N64Recomp)
++if (N64MODERN_NO_DYNAMIC_CODE)
++    target_compile_definitions(librecomp PUBLIC N64MODERN_NO_DYNAMIC_CODE=1)
++    message(STATUS "librecomp: runtime code generation and dynamic loading disabled")
++else()
++    target_link_libraries(librecomp PRIVATE LiveRecomp)
++endif()
+ target_link_libraries(librecomp PUBLIC miniz)
+diff --git a/lib/N64ModernRuntime/librecomp/src/mods.cpp b/lib/N64ModernRuntime/librecomp/src/mods.cpp
+index 13bed97..43a41aa 100644
+--- a/lib/N64ModernRuntime/librecomp/src/mods.cpp
++++ b/lib/N64ModernRuntime/librecomp/src/mods.cpp
+@@ -478,6 +478,15 @@ recomp::mods::LiveRecompilerCodeHandle::LiveRecompilerCodeHandle(
+     const N64Recomp::Context& context, const ModCodeHandleInputs& inputs,
+     std::unordered_map<size_t, size_t>&& entry_func_hooks, std::unordered_map<size_t, size_t>&& return_func_hooks, std::vector<size_t>&& original_section_indices, bool regenerated)
+ {
++#if defined(N64MODERN_NO_DYNAMIC_CODE)
++    (void)context;
++    (void)inputs;
++    (void)entry_func_hooks;
++    (void)return_func_hooks;
++    (void)original_section_indices;
++    (void)regenerated;
++    is_good = false;
++#else
+     if (!regenerated) {
+        section_addresses = std::make_unique<int32_t[]>(context.sections.size());
+     }
+@@ -519,17 +528,28 @@ recomp::mods::LiveRecompilerCodeHandle::LiveRecompilerCodeHandle(
+     // Generate the code.
+     recompiler_output = std::make_unique<N64Recomp::LiveGeneratorOutput>(generator.finish());
+     is_good = !errored && recompiler_output->good;
++#endif
+ }
+ 
+ void recomp::mods::LiveRecompilerCodeHandle::set_imported_function(size_t import_index, GenericFunction func) {
++#if defined(N64MODERN_NO_DYNAMIC_CODE)
++    (void)import_index;
++    (void)func;
++#else
+     std::visit(overloaded {
+         [this, import_index](recomp_func_t* native_func) {
+             recompiler_output->populate_import_symbol_jumps(import_index, native_func);
+         }
+     }, func);
++#endif
+ }
+ 
+ recomp::mods::CodeModLoadError recomp::mods::LiveRecompilerCodeHandle::populate_reference_symbols(const N64Recomp::Context& context, std::string& error_param) {
++#if defined(N64MODERN_NO_DYNAMIC_CODE)
++    (void)context;
++    error_param = "Live recompilation is unavailable in this release build";
++    return CodeModLoadError::FailedToRecompile;
++#else
+     size_t num_reference_jumps = recompiler_output->num_reference_symbol_jumps();
+     for (size_t jump_index = 0; jump_index < num_reference_jumps; jump_index++) {
+         N64Recomp::ReferenceJumpDetails jump_details = recompiler_output->get_reference_symbol_jump_details(jump_index);
+@@ -547,10 +567,16 @@ recomp::mods::CodeModLoadError recomp::mods::LiveRecompilerCodeHandle::populate_
+         recompiler_output->set_reference_symbol_jump(jump_index, cur_func);
+     }
+     return CodeModLoadError::Good;
++#endif
+ }
+ 
+ recomp::mods::GenericFunction recomp::mods::LiveRecompilerCodeHandle::get_function_handle(size_t func_index) {
++#if defined(N64MODERN_NO_DYNAMIC_CODE)
++    (void)func_index;
++    return GenericFunction{ static_cast<recomp_func_t*>(nullptr) };
++#else
+     return GenericFunction{ recompiler_output->functions[func_index] };
++#endif
+ }
+ 
+ void patch_func(recomp_func_t* target_func, recomp::mods::GenericFunction replacement_func) {
+@@ -2596,3 +2622,13 @@ void recomp::mods::unmet_dependency_handler(uint8_t* rdram, recomp_context* ctx,
+     );
+     ULTRAMODERN_QUICK_EXIT();
+ }
++
++#if defined(N64MODERN_NO_DYNAMIC_CODE)
++// Mobile release builds neither allocate nor execute generated code. These
++// inert shim definitions satisfy ModContext's ownership types while every
++// live-recompiler handle above reports a clean unsupported result.
++N64Recomp::LiveGeneratorOutput::~LiveGeneratorOutput() = default;
++N64Recomp::ShimFunction::ShimFunction(recomp_func_ext_t*, uintptr_t)
++    : code(nullptr), func(nullptr) {}
++N64Recomp::ShimFunction::~ShimFunction() = default;
++#endif
+diff --git a/lib/N64ModernRuntime/librecomp/src/recomp.cpp b/lib/N64ModernRuntime/librecomp/src/recomp.cpp
+index 260af97..bb35c65 100644
+--- a/lib/N64ModernRuntime/librecomp/src/recomp.cpp
++++ b/lib/N64ModernRuntime/librecomp/src/recomp.cpp
+@@ -148,7 +148,9 @@ bool recomp::register_game(const recomp::GameEntry& entry) {
+ }
+ 
+ void recomp::mods::initialize_mods() {
++#if !defined(N64MODERN_NO_DYNAMIC_CODE)
+     N64Recomp::live_recompiler_init();
++#endif
+     std::filesystem::create_directories(config_path / mods_directory);
+     std::filesystem::create_directories(config_path / mod_config_directory);
+     mod_context->set_mods_config_path(config_path / "mods.json");

@@ -1,0 +1,21 @@
+--- a/lib/N64ModernRuntime/librecomp/src/recomp.cpp
++++ b/lib/N64ModernRuntime/librecomp/src/recomp.cpp
+@@ -1007,6 +1007,18 @@
+     ultramodern::join_event_threads();
+     ultramodern::join_thread_cleaner_thread();
+     ultramodern::join_saving_thread();
++
++#if defined(__APPLE__)
++    // N64 guest threads are scheduler fibers backed by host threads. The
++    // upstream runtime does not own/join every still-live guest thread during
++    // quit, so unmapping RDRAM or running process-wide library destructors can
++    // race a parked guest thread and crash. Apple apps are single-session;
++    // after renderer, event, cleaner, and saving shutdown has completed, end
++    // the process without unmapping shared guest memory underneath those
++    // threads. The kernel reclaims it atomically at process exit.
++    std::fflush(nullptr);
++    std::_Exit(EXIT_SUCCESS);
++#endif
+     
+     // Free rdram.
+     bool free_failed;

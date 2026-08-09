@@ -9,6 +9,9 @@ require_command jq
 
 assert_revision "$PAPERPAD_REF/papermario" "$(lock_value papermario commit)" "papermario decomp"
 assert_revision "$PAPERPAD_REF/paper-mario-recut" "$(lock_value paperMarioReCut commit)" "Paper-Mario-ReCut"
+assert_revision "$PAPERPAD_REF/mupen64plus-rsp-hle" "$(lock_value mupen64plusRspHle commit)" "mupen64plus-rsp-hle"
+assert_revision "$PAPERPAD_REF/SDL2" "$(lock_value sdl2 commit)" "SDL2"
+assert_revision "$PAPERPAD_REF/zstd" "$(lock_value zstd commit)" "zstd"
 
 # N64Recomp submodules used by host-tool and runtime builds.
 for sub in lib/rabbitizer lib/ELFIO lib/fmt lib/tomlplusplus lib/sljit; do

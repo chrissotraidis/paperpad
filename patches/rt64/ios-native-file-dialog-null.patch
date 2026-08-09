@@ -1,7 +1,7 @@
-diff --git a/lib/rt64/CMakeLists.txt b/lib/rt64/CMakeLists.txt
+diff --git a/lib/rt64/src/contrib/nativefiledialog-extended/CMakeLists.txt b/lib/rt64/src/contrib/nativefiledialog-extended/CMakeLists.txt
 index 86873e8..7277aa8 100644
---- a/lib/rt64/CMakeLists.txt
-+++ b/lib/rt64/CMakeLists.txt
+--- a/lib/rt64/src/contrib/nativefiledialog-extended/CMakeLists.txt
++++ b/lib/rt64/src/contrib/nativefiledialog-extended/CMakeLists.txt
 @@ -13,6 +13,8 @@ option(NFD_INSTALL "Generate install target for nfd" ${nfd_ROOT_PROJECT})
  set(nfd_PLATFORM Undefined)
  if(WIN32)
@@ -11,10 +11,10 @@ index 86873e8..7277aa8 100644
  elseif(APPLE)
    set(nfd_PLATFORM PLATFORM_MACOS)
  elseif(UNIX AND NOT APPLE)
-diff --git a/lib/rt64/src/CMakeLists.txt b/lib/rt64/src/CMakeLists.txt
+diff --git a/lib/rt64/src/contrib/nativefiledialog-extended/src/CMakeLists.txt b/lib/rt64/src/contrib/nativefiledialog-extended/src/CMakeLists.txt
 index f83c583..a1a62da 100644
---- a/lib/rt64/src/CMakeLists.txt
-+++ b/lib/rt64/src/CMakeLists.txt
+--- a/lib/rt64/src/contrib/nativefiledialog-extended/src/CMakeLists.txt
++++ b/lib/rt64/src/contrib/nativefiledialog-extended/src/CMakeLists.txt
 @@ -56,6 +56,10 @@ if(nfd_PLATFORM STREQUAL PLATFORM_MACOS)
    list(APPEND SOURCE_FILES nfd_cocoa.m)
  endif()
@@ -26,11 +26,11 @@ index f83c583..a1a62da 100644
  # Define the library
  add_library(${TARGET_NAME} ${SOURCE_FILES})
 
-diff --git a/lib/rt64/src/nfd_null.cpp b/lib/rt64/src/nfd_null.cpp
+diff --git a/lib/rt64/src/contrib/nativefiledialog-extended/src/nfd_null.cpp b/lib/rt64/src/contrib/nativefiledialog-extended/src/nfd_null.cpp
 new file mode 100644
 index 0000000..8a88999
 --- /dev/null
-+++ b/lib/rt64/src/nfd_null.cpp
++++ b/lib/rt64/src/contrib/nativefiledialog-extended/src/nfd_null.cpp
 @@ -0,0 +1,47 @@
 +#include "include/nfd.h"
 +
@@ -52,7 +52,7 @@ index 0000000..8a88999
 +nfdresult_t NFD_PickFolderN(nfdnchar_t **, const nfdnchar_t *) { return NFD_CANCEL; }
 +nfdresult_t NFD_PickFolderU8(nfdu8char_t **, const nfdu8char_t *) { return NFD_CANCEL; }
 +
-+const char *NFD_GetError(void) { return "Native file dialogs require AnnePad's document picker"; }
++const char *NFD_GetError(void) { return "Native file dialogs are provided by PaperPad's UIKit shell"; }
 +void NFD_ClearError(void) {}
 +
 +nfdresult_t NFD_PathSet_GetCount(const nfdpathset_t *, nfdpathsetsize_t *count) {

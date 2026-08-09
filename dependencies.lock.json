@@ -17,6 +17,21 @@
       "commit": "098be0a501eecd5bb894a47964061d05eeedc3a2",
       "provenance": "SMCGames ReCut main; vendors N64ModernRuntime + rt64"
     },
+    "mupen64plusRspHle": {
+      "url": "https://github.com/mupen64plus/mupen64plus-rsp-hle.git",
+      "commit": "8a7a472a7172eb2c8725b305eae26818ed7b51a2",
+      "provenance": "Pinned HLE NAUDIO backend used by the Paper Mario runtime"
+    },
+    "sdl2": {
+      "url": "https://github.com/libsdl-org/SDL.git",
+      "commit": "5d249570393f7a37e037abf22cd6012a4cc56a71",
+      "provenance": "SDL 2.32.10 source for native macOS and Apple mobile builds"
+    },
+    "zstd": {
+      "url": "https://github.com/facebook/zstd.git",
+      "commit": "794ea1b0afca0f020f4e57b6732332231fb23c70",
+      "provenance": "zstd 1.5.6 source; supplies the upstream CMake files omitted from the flattened ReCut vendor tree"
+    },
     "spaghettipadReference": {
       "url": "https://github.com/chrissotraidis/spaghettipad.git",
       "commit": "4f6bb0c",
