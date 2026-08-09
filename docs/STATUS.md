@@ -1,133 +1,52 @@
 # PaperPad status
 
-Updated 2026-08-06 08:15 (America/Chicago). Target-by-target status.
+Updated 2026-08-09 (America/Chicago). This file distinguishes reproduced acceptance from planned work.
 
-Latest fixes (2026-08-06):
-- **Screen flashing fully fixed**: removed the VI-retrace present; the only
-  present now fires at the swap-task (frame-complete) boundary. Verified on
-  iPad and macOS: one present per frame, zero repeated/stale frames across
-  90 captured frames of the boot → intro → storybook sequence
-  (`docs/TESTING.md` 08:0x rows; `docs/KNOWN-ISSUES.md` #5).
-- **File-select crash on an empty flash card fixed**: flash page numbers are
-  now masked to the chip's page count, so empty-slot reads (`page_num = -1`)
-  wrap into erased flash and fail the checksum gracefully instead of
-  crashing `save_read` (SIGBUS). Verified macOS: fresh card → title → file
-  select → new game → Mario's House gameplay (`docs/KNOWN-ISSUES.md` #6).
-- **Teardown autorelease crash fixed**: the RT64 Workload thread's
-  `objc_autoreleasePoolPop` crash at exit is gone. Root cause: over-released
-  Metal-cpp objects (blit/resolve encoders, a texture descriptor, a shader
-  name string) left dangling pointers in the caller's autorelease pool.
-  Fixed with proper retain/release ownership, thread-wide autorelease pool
-  markers on all RT64 workers, and stopping the workers before render-object
-  teardown (`docs/KNOWN-ISSUES.md` #2). Verified: 8 macOS SIGTERM cycles +
-  a 110s run + iPad terminate all exit cleanly with zero crash reports.
+## Current acceptance
 
-| Target | Status | Evidence |
+| Target | Status | Reproduced evidence |
 |---|---|---|
-| macOS native app | **Playable: intro, story narration, and Toad Town gameplay reached; runs 20+ minutes at ~60fps with HLE audio** | `docs/evidence/macos-gameplay-opening.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`, `docs/evidence/macos-gameplay-star-haven.jpg`; health log `t=1348` stable |
-| iPhone Simulator | **Intro + story + Toad Town gameplay reached; touch overlay visible; 7.5+ minutes stable** | `docs/evidence/ios-iphone-intro-hle.jpg`; health log `t=450` stable |
-| iPad Simulator | **Playable: full flow (title -> story -> name entry -> file select -> Mario's House gameplay) driven via Simulator keyboard; crisp 7x; audio flowing** | `docs/evidence/ipad-title-full.jpg`, `docs/evidence/ipad-fileselect.jpg`, `docs/evidence/ipad-gameplay-marios-house.jpg` |
-| iOS device (unsigned IPA) | Not started | — |
-| Signed physical device | Blocked externally (no signing identity/device) | — |
+| Apple Silicon macOS | **Verified local source build** | ROM-free app build/signature check; launch through intro, name/file creation, and early gameplay; keyboard input; clean test quit |
+| iPhone Simulator | **Verified local source build** | First-run UI, ROM import path, native launch/rendering, touch overlay, persistent menu/settings, and clean terminate |
+| iPad Simulator | **Verified local source build** | Retina 4:3 rendering in both orientations, title/file flow, touch-driven castle entry, settings/touch visibility/opacity/layout/ROM controls, and clean terminate |
+| Physical iPhone/iPad | **Not verified** | No device build, signing, install, audible-device-audio, interruption, thermal, or long-play evidence |
+| Signed/notarized/TestFlight/App Store | **Not available** | Packaging, rights clearance, signing, and distribution acceptance remain open |
 
-## macOS current state (2026-08-05 23:55)
+The tested build identifies as version 0.1.0 (build 1), profile `release`, bundle ID `com.chrissotraidis.paperpad` on iOS.
 
-Works:
-- Full intro → story narration → Toad Town gameplay reached on the current
-  build (`build-macos2`, commit `5226a15` + HLE audio patch). The N64 logo,
-  star scene, storybook cutscene, opening narration ("Today..." →
-  "In the sanctuary of Star Haven" → "Oh dear... What the...?" → Bowser
-  scenes), and the gameplay-map load (`tik_03`/`trd_09` = Toad Town) all
-  render at ~60fps. Ran 22+ minutes with healthy health-log counters
-  (gfx/audio/sp/dp all +120 per 2 s tick, ext_pending=0).
-- Keyboard input works and advances story text (Z=A, X=B, Enter=Start,
-  arrows=stick, WASD=DPad). A-press advanced the opening narration, proving
-  the input path end-to-end.
-- **Audio now processes through mupen64plus-rsp-hle** (NAUDIO interpreter)
-  instead of the broken recompiled aspMain ucode: the "RSP ucode 2 exited
-  unexpectedly" flood is gone and audio tasks complete every frame. Audible
-  verification on speakers/device is still pending (see KNOWN-ISSUES.md).
-- Launches reliably with the vendored SDL2 2.32.10 static build
-  (`build-macos-sdl2/`); logs runtime events to stderr for diagnosis.
-- Freeze diagnostic: the health logger now dumps the guest startup state
-  (`startupState`/`introPart`/`mainScriptID`/pressed buttons) plus the
-  message-log tail when task submission stalls (`[freeze]` lines in
-  `~/Library/Application Support/health.log`).
+## Fixes verified in the 2026-08-09 release audit
 
-Known issues (see `docs/KNOWN-ISSUES.md`): process teardown can crash in RT64
-worker autorelease cleanup; no touch controls on macOS (keyboard/gamepad
-only); audio output not yet confirmed audible.
+- iOS Metal initialization and Simulator shader-tool selection work.
+- The iOS path avoids unsupported 18-sampler native fast paths and the optional 52-buffer ray-tracing debug pipeline.
+- UIKit window dimensions are reported in physical pixels, fixing the quarter-size Retina viewport. iPad now shows a centered original 4:3 frame at full height in landscape and full width in portrait.
+- Flash page reads wrap safely, preventing the empty-file-select crash.
+- HLE NAUDIO replaces the broken recompiled Paper Mario audio microcode path and removes its RSP error flood.
+- RT64 Metal worker ownership/teardown fixes eliminated the reproduced autorelease crash.
+- The 2026-08-09 final macOS regression caught two teardown paths that the
+  historical patch provenance did not actually apply to the current ReCut
+  vendor layout. `metal-worker-lifetime.patch` now stops renderer workers in
+  dependency order, drains Apple autorelease pools, and corrects unowned Metal
+  object releases. `apple-clean-process-exit.patch` completes renderer, event,
+  thread-cleaner, and save shutdown before ending the single-session Apple
+  process without unmapping RDRAM beneath parked guest threads. Three
+  launch/render/input/quit cycles then exited with no new crash report.
+- A persistent accessible PaperPad Menu exposes native settings. Touch visibility and opacity now persist alongside volume, resolution, aspect, and edited layout.
+- The visible analog stick has a fixed center, while a broad left-side pickup region remains available. Touch flick retention was lengthened so short gestures reach the game poll reliably.
 
-## iPhone Simulator current state (2026-08-05 23:55)
+## Playtest boundary
 
-- **Build**: `build-ios-sim/PaperPad.xcodeproj` (CMake iOS toolchain, Release,
-  arm64, code signing off) builds cleanly. Link fixes landed: `-framework
-  UniformTypeIdentifiers` for `UTTypeData` and `extern "C"` linkage for
-  `paperpad_recomp_main` on both sides of the shell boundary.
-- **Launch + render**: installs on iPhone 16 Pro Simulator; Paper Mario's intro
-  renders (starfield, curtains, star spawn) under Metal; ~38% CPU while
-  running.
-- **Touch overlay**: `paperpad_touch_attach` now called after window creation;
-  overlay visible with stick, D-pad, A/B/Z, C-buttons, L/R, START
-  (`docs/evidence/ios-iphone-touch-overlay.png`).
-- **Intro + gameplay**: with the HLE audio fix the intro completes
-  (`[intro]` step count 7,141+), the story narration plays, and Toad Town
-  gameplay assets load (`tik_03`/`trd_09`). Health log stable to `t=450`
-  (7.5+ minutes) at full speed with no RSP flood. The earlier permanent
-  mid-intro boot stall (iOS #1) did not reproduce on the HLE build; treat the
-  one t≈256 stall (2026-08-05 23:31) as an intermittent issue until it
-  reproduces on a clean run.
-- **Render note**: drawable is sized in points (874×402 @ contentsScale 1.0)
-  rather than native pixels (2622×1206); functional but soft. simctl
-  screenshots capture the portrait framebuffer, so landscape app content
-  appears bottom/right-anchored in PNGs.
+The current hands-on route covered launch, title, file creation, the opening narrative, early map movement, dialogue, and entry into Peach's Castle. Touch A, Start, D-pad, and analog movement were exercised, including menu/settings interactions and a controls-off/on cycle. The final macOS artifact also passed three clean-quit cycles after a teardown regression was found and fixed. This is meaningful early-game acceptance, not a full-game playthrough.
 
-## iPad Simulator current state (2026-08-06)
+Visual comparisons against original Paper Mario references found matching theater structure, original 4:3 composition, saturated palette, checkerboard/curtain staging, dialogue styling, and layered paper-character presentation. See `docs/release-audit/` and the README.
 
-- The app previously ran in iPhone-compatibility mode on iPad
-  (`UIDeviceFamily=[1]`): an iPhone-sized 667×375 window in the middle of the
-  iPad screen, game content zoomed/cropped (user-reported 2026-08-06).
-  Diagnosed via window diagnostics: `screen=667x375 mode=750x1334
-  native=750x1334` (iPhone-8-sized canvas) while the sim framebuffer was the
-  full 1668×2420. Fixed by removing `LSRequiresIPhoneOS` and setting the
-  target device family to `1,2` (commit `eca833c`).
-- Native mode confirmed: window 1210×834, swapchain 2420×1668, drawable
-  2420×1668 @ contentsScale 2.00.
-- A second rendering bug was found and fixed: the CAMetalLayer was left at
-  `contentsScale 1.0`, so the drawable (1210×834) was half the swapchain's
-  pixel size (2420×1668) and the present clipped the frame — the
-  "zoomed/cropped" look. Fixed by aligning the layer's scale/drawableSize
-  with the swapchain (commit `0ab64ce`). The PAPER MARIO title screen now
-  renders in full (`docs/evidence/ipad-title-full.jpg`, `docs/evidence/ipad-story-crisp.jpg`), and the storybook
-  plays with correct framing.
-- A third rendering issue was fixed: the internal resolution defaulted to 1x
-  (native 320×240 upscaled ~7.5x), which looked soft and shimmered in motion
-  (the "screen flashing" reported on the live Simulator). The default is now
-  `Resolution::Auto` (WindowIntegerScale, 7x = 2240×1680 on the iPad) with
-  steady 60fps (commit `557d376`).
-- Settings sheet added to the "..." menu: master volume, resolution (Auto/2x),
-  aspect (Original/Expand), edit/reset touch layout, ROM management.
-  Persisted and applied at launch.
-- **Full playthrough verified (2026-08-06 02:0x)**: drove the game with the
-  Simulator's hardware-keyboard forwarding (Return=START, Z=A) through the
-  title screen, storybook, name entry ("File 1" created), file select, and
-  into Mario's House gameplay ("Mail call!" text advancing, steady 60fps to
-  t=690+). The health log now also reports the SDL audio queue size
-  (`queued=` bytes), confirming audio output flows from HLE -> AI buffer ->
-  SDL device.
+## Known open release gates
 
-## Next milestone
+1. Run a complete-game or chapter-spanning regression and a 60+ minute soak on the final macOS and Simulator artifacts.
+2. Confirm audible audio and interruption/background recovery on real Apple hardware.
+3. Add and audit a generic physical-device build before making any iPhone/iPad device claim.
+4. Verify controller hot-plug and decide whether touch controls should auto-hide while a hardware controller is active.
+5. Clean up the non-blocking iOS launch warnings: unbalanced UIKit appearance transition and duplicate Simulator accessibility class.
+6. Investigate the RT64 `RenderPool in Metal is not implemented currently` diagnostic and document whether the feature is unused or needs an implementation.
+7. Complete binary packaging, required third-party notices, signing/notarization, privacy, accessibility, and rights review before any public binary.
 
-The primary intro freeze is fixed on all three targets; the iPad now renders
-natively and correctly. Remaining:
-1. Drive the iPad through a full playthrough (title screen needs a button
-   press; no simctl touch injection — use the title-screen demo mode or
-   XCUITest) to confirm gameplay on iPad.
-2. Confirm audible audio output (host AI buffer / speaker check) — the HLE
-   backend processes tasks, but an audible proof on speakers or a device is
-   still open.
-3. Drive a longer agent playthrough (walk Mario, enter Toad Town, trigger a
-   text box / battle) to catch gameplay-era stalls.
-4. Optionally fix the recompiled `n_aspMain` ucode itself (regenerate with
-   `extra_indirect_branch_targets` 0x1C84/0x02B0) so the audio ucode could
-   replace HLE later — not needed for playability.
+Historical failures and detailed investigations remain in [TESTING.md](TESTING.md) and [KNOWN-ISSUES.md](KNOWN-ISSUES.md). They are not evidence that the current build still fails.
