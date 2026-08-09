@@ -1,6 +1,10 @@
-# PaperPad known issues
+# PaperPad known issues and investigation archive
 
-Updated 2026-08-05 23:55.
+The detailed entries below preserve the 2026-08-05 through 2026-08-06 failure
+investigations and fixes. They are historical evidence, not the current release
+status. See `docs/STATUS.md` for the 2026-08-09 acceptance boundary and open
+gates. Entries marked fixed are expected to remain covered by the pinned ReCut
+snapshot or the maintained patch series.
 
 ## macOS
 

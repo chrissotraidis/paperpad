@@ -1,0 +1,35 @@
+diff --git a/lib/rt64/src/render/rt64_shader_library.cpp b/lib/rt64/src/render/rt64_shader_library.cpp
+--- a/lib/rt64/src/render/rt64_shader_library.cpp
++++ b/lib/rt64/src/render/rt64_shader_library.cpp
+@@ -8,6 +8,10 @@
+ #include "shared/rt64_render_target_copy.h"
+ #include "shared/rt64_rsp_vertex_test_z.h"
+ 
++#if defined(__APPLE__)
++#include <TargetConditionals.h>
++#endif
++
+ #include "shaders/FbChangesClearCS.hlsl.spirv.h"
+ #include "shaders/FbChangesDrawColorPS.hlsl.spirv.h"
+ #include "shaders/FbChangesDrawDepthPS.hlsl.spirv.h"
+@@ -853,7 +857,11 @@ namespace RT64 {
+             postProcess.pipeline = device->createGraphicsPipeline(pipelineDesc);
+         }
+         
+-        // Raytracing debug.
++        // Raytracing debug. Simulator Metal supports fewer argument buffers
++        // than this optional visualization pipeline requires. Normal rendering
++        // does not use it, so avoid creating a pipeline that is guaranteed to
++        // fail while keeping it available on macOS and physical devices.
++#if !defined(__APPLE__) || !TARGET_OS_SIMULATOR
+         {
+             FramebufferRendererDescriptorCommonSet descriptorCommonSet(samplerLibrary, deviceCapabilities.raytracing);
+             FramebufferRendererDescriptorTextureSet descriptorTextureSet;
+@@ -877,6 +885,7 @@ namespace RT64 {
+             pipelineDesc.multisampling = multisampling;
+             debug.pipeline = device->createGraphicsPipeline(pipelineDesc);
+         }
++#endif
+ 
+         // RSP Vertex Test Z.
+         {

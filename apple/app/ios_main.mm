@@ -31,9 +31,12 @@ static PaperPadTouchOverlayView* g_touch_overlay = nullptr;
 PaperPadTouchTapLatch g_touch_taps;
 std::atomic<int32_t> g_touch_x{0};
 std::atomic<int32_t> g_touch_y{0};
+std::atomic<int32_t> g_touch_flick_x{0};
+std::atomic<int32_t> g_touch_flick_y{0};
+std::atomic<uint8_t> g_touch_flick_polls{0};
 
 constexpr uint8_t kTapHoldPolls = 6;
-constexpr uint8_t kShoulderTapHoldPolls = 45;
+constexpr uint8_t kAnalogFlickHoldPolls = 6;
 
 enum class ControlKind { Stick, Button };
 
@@ -102,9 +105,16 @@ NSString* layoutDefaultsKey() {
         : @"paperpad.touch.layout.iphone.v5";
 }
 
+NSString* settingsDefaultsKey() {
+    return @"paperpad.settings.v1";
+}
+
 } // namespace
 
 @interface PaperPadTouchOverlayView : UIView
+- (void)beginEditingLayout;
+- (void)resetLayout;
+- (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity;
 @end
 
 @implementation PaperPadTouchOverlayView {
@@ -116,6 +126,9 @@ NSString* layoutDefaultsKey() {
     BOOL _editing;
     BOOL _hasUndo;
     NSInteger _selected;
+    BOOL _gameplayControlsEnabled;
+    CGFloat _globalOpacity;
+    UIButton* _utilityButton;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -127,6 +140,20 @@ NSString* layoutDefaultsKey() {
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _controls = defaultControls();
         _selected = 9;
+        _gameplayControlsEnabled = YES;
+        _globalOpacity = 0.70;
+        _utilityButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        [_utilityButton setTitle:@"\u2022\u2022\u2022" forState:UIControlStateNormal];
+        _utilityButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
+        _utilityButton.backgroundColor = [UIColor colorWithWhite:0.02 alpha:0.64];
+        _utilityButton.layer.cornerRadius = 22.0;
+        _utilityButton.layer.borderWidth = 1.0;
+        _utilityButton.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.34].CGColor;
+        _utilityButton.accessibilityLabel = @"PaperPad Menu";
+        _utilityButton.accessibilityHint = @"Opens settings and game setup";
+        [_utilityButton addTarget:self action:@selector(presentUtilityMenu)
+                 forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:_utilityButton];
         [self loadLayout];
         [[NSNotificationCenter defaultCenter]
             addObserver:self
@@ -135,6 +162,11 @@ NSString* layoutDefaultsKey() {
                  object:nil];
     }
     return self;
+}
+
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    _utilityButton.frame = [self utilityButtonRect];
 }
 
 - (void)dealloc {
@@ -265,7 +297,7 @@ NSString* layoutDefaultsKey() {
     CGFloat width = MIN(64.0, usable.size.width / 7.0);
     CGFloat total = width * 6.0;
     return CGRectMake(CGRectGetMidX(usable) - total / 2.0 + width * index,
-                      CGRectGetMinY(usable) + 6.0, width, 34.0);
+                      CGRectGetMinY(usable) + 4.0, width, 44.0);
 }
 
 - (void)drawLabel:(NSString*)label inRect:(CGRect)rect color:(UIColor*)color size:(CGFloat)size {
@@ -289,6 +321,7 @@ NSString* layoutDefaultsKey() {
 
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
         const TouchControl& control = _controls[index];
+        if (!_editing && !_gameplayControlsEnabled) continue;
         if (!control.visible && !_editing) continue;
         CGPoint center = [self centerForControl:control];
         CGFloat radius = [self radiusForControl:control];
@@ -296,7 +329,8 @@ NSString* layoutDefaultsKey() {
         UIBezierPath* controlPath = [self isShoulderControl:control]
             ? [UIBezierPath bezierPathWithRoundedRect:controlFrame cornerRadius:radius]
             : [UIBezierPath bezierPathWithOvalInRect:controlFrame];
-        CGFloat alpha = control.visible ? control.opacity : 0.16;
+        CGFloat alpha = MIN(1.0, (control.visible ? control.opacity : 0.16) *
+                                  (_globalOpacity / 0.70));
         BOOL pressed = NO;
         for (const auto& item : _touchRoles) {
             if (item.second == index) {
@@ -363,23 +397,13 @@ NSString* layoutDefaultsKey() {
                 divider.lineWidth = 1.0;
                 [divider stroke];
             }
-            [self drawLabel:labels[i] inRect:item color:UIColor.whiteColor size:10.0];
+            [self drawLabel:labels[i] inRect:item color:UIColor.whiteColor size:11.0];
         }
-    } else {
-        CGRect utility = [self utilityButtonRect];
-        UIBezierPath* utilityPath = [UIBezierPath bezierPathWithRoundedRect:utility
-                                                              cornerRadius:22.0];
-        [[UIColor colorWithWhite:0.02 alpha:0.64] setFill];
-        [utilityPath fill];
-        [[UIColor colorWithWhite:1.0 alpha:0.34] setStroke];
-        utilityPath.lineWidth = 1.0;
-        [utilityPath stroke];
-        [self drawLabel:@"\u2022\u2022\u2022" inRect:utility
-                  color:[UIColor colorWithWhite:1 alpha:0.88] size:16.0];
     }
 }
 
 - (NSInteger)controlAtPoint:(CGPoint)point includeHidden:(BOOL)includeHidden {
+    if (!_editing && !_gameplayControlsEnabled) return NSNotFound;
     NSInteger nearest = NSNotFound;
     CGFloat nearestDistance = CGFLOAT_MAX;
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
@@ -441,6 +465,7 @@ NSString* layoutDefaultsKey() {
 
 - (void)beginEditingLayout {
     _editing = YES;
+    _utilityButton.hidden = YES;
     [self clearInput];
     [self setNeedsDisplay];
 }
@@ -450,6 +475,7 @@ NSString* layoutDefaultsKey() {
     _controls = defaultControls();
     _hasUndo = YES;
     _editing = NO;
+    _utilityButton.hidden = NO;
     [self saveLayout];
     [self setNeedsDisplay];
 }
@@ -468,6 +494,7 @@ NSString* layoutDefaultsKey() {
         switch (index) {
             case 0:
                 _editing = NO;
+                _utilityButton.hidden = NO;
                 _hasUndo = NO;
                 [self saveLayout];
                 break;
@@ -518,6 +545,13 @@ NSString* layoutDefaultsKey() {
     return NO;
 }
 
+- (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity {
+    _gameplayControlsEnabled = enabled;
+    _globalOpacity = MAX(0.20, MIN(1.0, opacity));
+    if (!enabled) [self clearInput];
+    [self setNeedsDisplay];
+}
+
 - (void)moveSelectedToPoint:(CGPoint)point {
     if (_selected == NSNotFound) return;
     CGRect usable = [self usableBounds];
@@ -549,6 +583,20 @@ NSString* layoutDefaultsKey() {
             }
             x = dx / radius;
             y = -dy / radius;
+            constexpr CGFloat deadzone = 0.12;
+            const CGFloat normalizedLength = hypot(x, y);
+            if (normalizedLength <= deadzone) {
+                x = 0.0;
+                y = 0.0;
+            } else {
+                const CGFloat remappedLength = (normalizedLength - deadzone) / (1.0 - deadzone);
+                const CGFloat scale = remappedLength / normalizedLength;
+                x *= scale;
+                y *= scale;
+                g_touch_flick_x.store((int32_t)std::lround(x * 10000.0), std::memory_order_relaxed);
+                g_touch_flick_y.store((int32_t)std::lround(y * 10000.0), std::memory_order_relaxed);
+                g_touch_flick_polls.store(kAnalogFlickHoldPolls, std::memory_order_relaxed);
+            }
             _stickKnob = CGPointMake(_stickOrigin.x + dx, _stickOrigin.y + dy);
         } else {
             buttons |= control.mask;
@@ -568,6 +616,9 @@ NSString* layoutDefaultsKey() {
     g_touch_taps.clearAll();
     g_touch_x.store(0, std::memory_order_relaxed);
     g_touch_y.store(0, std::memory_order_relaxed);
+    g_touch_flick_x.store(0, std::memory_order_relaxed);
+    g_touch_flick_y.store(0, std::memory_order_relaxed);
+    g_touch_flick_polls.store(0, std::memory_order_relaxed);
     [self setNeedsDisplay];
 }
 
@@ -576,22 +627,28 @@ NSString* layoutDefaultsKey() {
         CGPoint point = [touch locationInView:self];
         if ([self handleToolbarPoint:point]) continue;
         NSInteger control = [self controlAtPoint:point includeHidden:_editing];
+        BOOL usesFloatingStick = NO;
+        if (!_editing && control == NSNotFound &&
+            point.x <= CGRectGetMinX([self usableBounds]) + [self usableBounds].size.width * 0.47) {
+            control = 0;
+            usesFloatingStick = YES;
+        }
         if (control == NSNotFound) continue;
         _selected = control;
         _touchRoles[touch] = (int)control;
         if (_editing) {
             [self moveSelectedToPoint:point];
         } else if (_controls[control].kind == ControlKind::Stick) {
-            _stickOrigin = point;
+            // The visible stick behaves like a conventional fixed control, so
+            // tapping or dragging its edge immediately produces direction.
+            // The broader left-side fallback remains a floating stick whose
+            // origin follows the first contact.
+            _stickOrigin = usesFloatingStick ? point : [self centerForControl:_controls[control]];
             _stickKnob = point;
         } else {
-            // Preserve quick taps across several runtime polls. Shoulder taps
-            // get a slightly longer grace window so the R+button party
-            // selection chord can also be entered sequentially on a touchscreen.
-            const uint16_t mask = _controls[control].mask;
-            const uint8_t holdPolls = (mask & 0x0030u) != 0
-                ? kShoulderTapHoldPolls : kTapHoldPolls;
-            g_touch_taps.extend(mask, holdPolls);
+            // Preserve quick taps across several runtime polls without turning
+            // a single shoulder tap into a long press.
+            g_touch_taps.extend(_controls[control].mask, kTapHoldPolls);
         }
     }
     if (!_editing) [self publishInput];
@@ -607,6 +664,16 @@ NSString* layoutDefaultsKey() {
             }
         }
     } else {
+        for (UITouch* touch in touches) {
+            auto found = _touchRoles.find(touch);
+            if (found == _touchRoles.end()) continue;
+            NSInteger role = found->second;
+            if (role <= 0 || role >= (NSInteger)kControlCount) continue;
+            CGPoint point = [touch locationInView:self];
+            if (!CGRectContainsPoint(CGRectInset([self frameForControl:_controls[role]], -8.0, -8.0), point)) {
+                _touchRoles.erase(found);
+            }
+        }
         [self publishInput];
     }
 }
@@ -645,6 +712,13 @@ extern "C" void paperpad_touch_attach(void* window_pointer) {
         }
         PaperPadTouchOverlayView* overlay =
             [[PaperPadTouchOverlayView alloc] initWithFrame:host.bounds];
+        NSDictionary* settings =
+            [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()];
+        BOOL controlsEnabled = settings[@"touchControls"] == nil ||
+            [settings[@"touchControls"] boolValue];
+        CGFloat controlsOpacity = settings[@"touchOpacity"] == nil
+            ? 0.70 : [settings[@"touchOpacity"] doubleValue];
+        [overlay setGameplayControlsEnabled:controlsEnabled opacity:controlsOpacity];
         g_touch_overlay = overlay;
         overlay.translatesAutoresizingMaskIntoConstraints = NO;
         [host addSubview:overlay];
@@ -662,8 +736,17 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
         *buttons = g_touch_buttons.load(std::memory_order_relaxed) |
                    g_touch_taps.consume();
     }
-    if (x != nullptr) *x = g_touch_x.load(std::memory_order_relaxed) / 10000.0F;
-    if (y != nullptr) *y = g_touch_y.load(std::memory_order_relaxed) / 10000.0F;
+    float touchX = g_touch_x.load(std::memory_order_relaxed) / 10000.0F;
+    float touchY = g_touch_y.load(std::memory_order_relaxed) / 10000.0F;
+    uint8_t flickPolls = g_touch_flick_polls.load(std::memory_order_relaxed);
+    if (touchX == 0.0F && touchY == 0.0F && flickPolls > 0) {
+        touchX = g_touch_flick_x.load(std::memory_order_relaxed) / 10000.0F;
+        touchY = g_touch_flick_y.load(std::memory_order_relaxed) / 10000.0F;
+        g_touch_flick_polls.compare_exchange_strong(
+            flickPolls, static_cast<uint8_t>(flickPolls - 1), std::memory_order_relaxed);
+    }
+    if (x != nullptr) *x = touchX;
+    if (y != nullptr) *y = touchY;
 }
 
 // ---------------------------------------------------------------------------
@@ -672,92 +755,139 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 // overlay (layout editing/reset).
 // ---------------------------------------------------------------------------
 
-static NSString* settingsDefaultsKey() {
-    return @"paperpad.settings.v1";
-}
-
 @implementation PaperPadSettingsViewController {
     UISlider* _volumeSlider;
     UILabel* _volumeLabel;
     UISegmentedControl* _resolutionControl;
     UISegmentedControl* _aspectControl;
+    UISwitch* _touchControlsSwitch;
+    UISlider* _touchOpacitySlider;
+    UILabel* _touchOpacityLabel;
 }
 
 - (void)loadView {
     self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
     self.view.backgroundColor = [UIColor colorWithWhite:0.10 alpha:0.96];
-    self.preferredContentSize = CGSizeMake(560, 470);
+    self.preferredContentSize = CGSizeMake(560, 520);
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    CGFloat margin = 28.0;
-    CGFloat y = 36.0;
-    CGFloat width = self.view.bounds.size.width - margin * 2.0;
-    if (width > 560.0) width = 560.0;
+    UIScrollView* scroll = [[UIScrollView alloc] init];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    scroll.alwaysBounceVertical = YES;
+    scroll.keyboardDismissMode = UIScrollViewKeyboardDismissModeInteractive;
+    [self.view addSubview:scroll];
 
-    UILabel* title = [[UILabel alloc] initWithFrame:CGRectMake(margin, y - 12.0, width, 34.0)];
+    UIView* content = [[UIView alloc] init];
+    content.translatesAutoresizingMaskIntoConstraints = NO;
+    [scroll addSubview:content];
+
+    UIStackView* stack = [[UIStackView alloc] init];
+    stack.axis = UILayoutConstraintAxisVertical;
+    stack.alignment = UIStackViewAlignmentFill;
+    stack.spacing = 14.0;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
+    [content addSubview:stack];
+
+    UILabel* title = [self label:@"PaperPad Settings"];
     title.text = @"PaperPad Settings";
     title.font = [UIFont boldSystemFontOfSize:24.0];
-    title.textColor = UIColor.whiteColor;
-    [self.view addSubview:title];
-    y += 44.0;
+    title.accessibilityTraits |= UIAccessibilityTraitHeader;
+    [stack addArrangedSubview:title];
 
     // Master volume.
-    UILabel* volumeTitle = [self label:@"Master Volume"];
-    volumeTitle.frame = CGRectMake(margin, y, width * 0.5, 22.0);
-    [self.view addSubview:volumeTitle];
+    UIStackView* volumeRow = [[UIStackView alloc] init];
+    volumeRow.axis = UILayoutConstraintAxisHorizontal;
+    [volumeRow addArrangedSubview:[self label:@"Master Volume"]];
     _volumeLabel = [self label:@"100%"];
     _volumeLabel.textAlignment = NSTextAlignmentRight;
-    _volumeLabel.frame = CGRectMake(margin + width * 0.5, y, width * 0.5, 22.0);
-    [self.view addSubview:_volumeLabel];
-    y += 30.0;
-    _volumeSlider = [[UISlider alloc] initWithFrame:CGRectMake(margin, y, width, 34.0)];
+    [volumeRow addArrangedSubview:_volumeLabel];
+    [stack addArrangedSubview:volumeRow];
+    _volumeSlider = [[UISlider alloc] init];
     _volumeSlider.minimumValue = 0.0;
     _volumeSlider.maximumValue = 100.0;
     _volumeSlider.continuous = YES;
+    _volumeSlider.accessibilityLabel = @"Master Volume";
     [_volumeSlider addTarget:self action:@selector(volumeChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.view addSubview:_volumeSlider];
-    y += 50.0;
+    [_volumeSlider.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+    [stack addArrangedSubview:_volumeSlider];
 
     // Resolution.
-    UILabel* resTitle = [self label:@"Resolution"];
-    resTitle.frame = CGRectMake(margin, y, width * 0.5, 22.0);
-    [self.view addSubview:resTitle];
-    y += 30.0;
+    [stack addArrangedSubview:[self label:@"Resolution"]];
     _resolutionControl = [[UISegmentedControl alloc] initWithItems:@[@"Auto", @"2x"]];
-    _resolutionControl.frame = CGRectMake(margin, y, width, 34.0);
+    _resolutionControl.accessibilityLabel = @"Rendering Resolution";
     [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.view addSubview:_resolutionControl];
-    y += 50.0;
+    [_resolutionControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
+    [stack addArrangedSubview:_resolutionControl];
 
     // Aspect ratio.
-    UILabel* aspectTitle = [self label:@"Aspect Ratio"];
-    aspectTitle.frame = CGRectMake(margin, y, width, 22.0);
-    [self.view addSubview:aspectTitle];
-    y += 30.0;
+    [stack addArrangedSubview:[self label:@"Aspect Ratio"]];
     _aspectControl = [[UISegmentedControl alloc] initWithItems:@[@"Original (4:3)", @"Expand"]];
-    _aspectControl.frame = CGRectMake(margin, y, width, 34.0);
+    _aspectControl.accessibilityLabel = @"Aspect Ratio";
     [_aspectControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
-    [self.view addSubview:_aspectControl];
-    y += 58.0;
+    [_aspectControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
+    [stack addArrangedSubview:_aspectControl];
+
+    // Touch controls.
+    UIStackView* touchControlsRow = [[UIStackView alloc] init];
+    touchControlsRow.axis = UILayoutConstraintAxisHorizontal;
+    touchControlsRow.alignment = UIStackViewAlignmentCenter;
+    UILabel* touchControlsLabel = [self label:@"Touch Controls"];
+    [touchControlsRow addArrangedSubview:touchControlsLabel];
+    _touchControlsSwitch = [[UISwitch alloc] init];
+    _touchControlsSwitch.accessibilityLabel = @"Touch Controls";
+    [_touchControlsSwitch addTarget:self action:@selector(touchControlsChanged:)
+                   forControlEvents:UIControlEventValueChanged];
+    [touchControlsRow addArrangedSubview:_touchControlsSwitch];
+    [stack addArrangedSubview:touchControlsRow];
+
+    UIStackView* touchOpacityRow = [[UIStackView alloc] init];
+    touchOpacityRow.axis = UILayoutConstraintAxisHorizontal;
+    [touchOpacityRow addArrangedSubview:[self label:@"Touch Opacity"]];
+    _touchOpacityLabel = [self label:@"70%"];
+    _touchOpacityLabel.textAlignment = NSTextAlignmentRight;
+    [touchOpacityRow addArrangedSubview:_touchOpacityLabel];
+    [stack addArrangedSubview:touchOpacityRow];
+    _touchOpacitySlider = [[UISlider alloc] init];
+    _touchOpacitySlider.minimumValue = 20.0;
+    _touchOpacitySlider.maximumValue = 100.0;
+    _touchOpacitySlider.continuous = YES;
+    _touchOpacitySlider.accessibilityLabel = @"Touch Opacity";
+    [_touchOpacitySlider addTarget:self action:@selector(touchOpacityChanged:)
+                  forControlEvents:UIControlEventValueChanged];
+    [_touchOpacitySlider.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+    [stack addArrangedSubview:_touchOpacitySlider];
 
     // Actions.
-    [self addActionButton:@"Edit Touch Layout" atY:y action:@selector(editLayoutPressed)];
-    y += 46.0;
-    [self addActionButton:@"Reset Touch Layout" atY:y action:@selector(resetLayoutPressed)];
-    y += 46.0;
-    [self addActionButton:@"Manage Game ROM" atY:y action:@selector(romPressed)];
-    y += 46.0;
+    [stack addArrangedSubview:[self actionButton:@"Edit Touch Layout" action:@selector(editLayoutPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Reset Touch Layout" action:@selector(resetLayoutPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Manage Game ROM" action:@selector(romPressed)]];
 
-    UIButton* done = [UIButton buttonWithType:UIButtonTypeSystem];
-    done.frame = CGRectMake(margin, y + 4.0, width, 44.0);
+    UIButton* done = [self actionButton:@"Done" action:@selector(donePressed)];
     [done setTitle:@"Done" forState:UIControlStateNormal];
     done.titleLabel.font = [UIFont boldSystemFontOfSize:19.0];
-    [done setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
-    [done addTarget:self action:@selector(donePressed) forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:done];
+    done.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+    [stack addArrangedSubview:done];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [scroll.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [scroll.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [scroll.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],
+        [scroll.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],
+        [content.leadingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.leadingAnchor],
+        [content.trailingAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.trailingAnchor],
+        [content.topAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.topAnchor],
+        [content.bottomAnchor constraintEqualToAnchor:scroll.contentLayoutGuide.bottomAnchor],
+        [content.widthAnchor constraintEqualToAnchor:scroll.frameLayoutGuide.widthAnchor],
+        [stack.topAnchor constraintEqualToAnchor:content.topAnchor constant:24.0],
+        [stack.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-24.0],
+        [stack.centerXAnchor constraintEqualToAnchor:content.centerXAnchor],
+        [stack.leadingAnchor constraintGreaterThanOrEqualToAnchor:content.leadingAnchor constant:28.0],
+        [stack.trailingAnchor constraintLessThanOrEqualToAnchor:content.trailingAnchor constant:-28.0],
+        [stack.widthAnchor constraintLessThanOrEqualToConstant:560.0],
+    ]];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -773,18 +903,15 @@ static NSString* settingsDefaultsKey() {
     return label;
 }
 
-- (void)addActionButton:(NSString*)title atY:(CGFloat)y action:(SEL)action {
+- (UIButton*)actionButton:(NSString*)title action:(SEL)action {
     UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
-    CGFloat margin = 28.0;
-    CGFloat width = self.view.bounds.size.width - margin * 2.0;
-    if (width > 560.0) width = 560.0;
-    button.frame = CGRectMake(margin, y, width, 40.0);
     [button setTitle:title forState:UIControlStateNormal];
     button.titleLabel.font = [UIFont systemFontOfSize:17.0];
     [button setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
     button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
-    [self.view addSubview:button];
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+    return button;
 }
 
 - (void)refreshFromDefaults {
@@ -792,10 +919,16 @@ static NSString* settingsDefaultsKey() {
     float volume = saved[@"volume"] ? [saved[@"volume"] floatValue] : 1.0f;
     int resolution = saved[@"resolution"] ? [saved[@"resolution"] intValue] : 0;
     int aspect = saved[@"aspect"] ? [saved[@"aspect"] intValue] : 0;
+    BOOL touchControls = saved[@"touchControls"] == nil || [saved[@"touchControls"] boolValue];
+    float touchOpacity = saved[@"touchOpacity"] ? [saved[@"touchOpacity"] floatValue] : 0.70f;
     _volumeSlider.value = volume * 100.0;
     _volumeLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(volume * 100.0)];
     _resolutionControl.selectedSegmentIndex = resolution;
     _aspectControl.selectedSegmentIndex = aspect;
+    _touchControlsSwitch.on = touchControls;
+    _touchOpacitySlider.value = touchOpacity * 100.0f;
+    _touchOpacityLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(touchOpacity * 100.0f)];
+    _touchOpacitySlider.accessibilityValue = _touchOpacityLabel.text;
 }
 
 - (void)persist {
@@ -803,6 +936,8 @@ static NSString* settingsDefaultsKey() {
         @"volume": @(_volumeSlider.value / 100.0),
         @"resolution": @(_resolutionControl.selectedSegmentIndex),
         @"aspect": @(_aspectControl.selectedSegmentIndex),
+        @"touchControls": @(_touchControlsSwitch.isOn),
+        @"touchOpacity": @(_touchOpacitySlider.value / 100.0),
     };
     [NSUserDefaults.standardUserDefaults setObject:saved forKey:settingsDefaultsKey()];
 }
@@ -817,6 +952,20 @@ static NSString* settingsDefaultsKey() {
 - (void)graphicsChanged:(UISegmentedControl*)control {
     PaperPad_SetGraphicsConfig((int)_resolutionControl.selectedSegmentIndex,
                                (int)_aspectControl.selectedSegmentIndex);
+    [self persist];
+}
+
+- (void)touchControlsChanged:(UISwitch*)control {
+    [g_touch_overlay setGameplayControlsEnabled:control.isOn
+                                         opacity:_touchOpacitySlider.value / 100.0];
+    [self persist];
+}
+
+- (void)touchOpacityChanged:(UISlider*)slider {
+    CGFloat opacity = slider.value / 100.0;
+    _touchOpacityLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(slider.value)];
+    slider.accessibilityValue = _touchOpacityLabel.text;
+    [g_touch_overlay setGameplayControlsEnabled:_touchControlsSwitch.isOn opacity:opacity];
     [self persist];
 }
 

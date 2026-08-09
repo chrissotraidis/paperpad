@@ -1,0 +1,25 @@
+# Dependency inventory
+
+Verified lock snapshot: 2026-08-09. `dependencies.lock.json` is the machine-readable authority. Source inputs are fetched into ignored `ref/` checkouts and their push URLs are disabled by `scripts/clone-sources.sh`.
+
+| Component | Exact revision | Purpose | License / rights note |
+|---|---|---|---|
+| [pmret/papermario](https://github.com/pmret/papermario) | `c61db66e3cce7e8fa5b53d3e9ecd01632e7b064a` | Paper Mario US decompilation, ROM verification, ELF metadata | Source-available decompilation; Nintendo material remains excluded; inspect pinned notices before redistribution |
+| [SMCGames/Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut) | `098be0a501eecd5bb894a47964061d05eeedc3a2` | Game-specific N64Recomp integration; vendors N64ModernRuntime and RT64 | Multiple nested components and licenses; inspect the pinned tree |
+| [mupen64plus-rsp-hle](https://github.com/mupen64plus/mupen64plus-rsp-hle) | `8a7a472a7172eb2c8725b305eae26818ed7b51a2` | HLE NAUDIO backend | BSD-style/Mupen64Plus notices in pinned source; preserve required notices |
+| [SDL 2.32.10](https://github.com/libsdl-org/SDL) | `5d249570393f7a37e037abf22cd6012a4cc56a71` | Window, input, controllers, and audio | zlib license in pinned source |
+| [zstd 1.5.6](https://github.com/facebook/zstd) | `794ea1b0afca0f020f4e57b6732332231fb23c70` | Compression source/CMake files needed by the flattened ReCut vendor tree | BSD/GPL dual layout; shipped library portions and notices must be audited |
+| [SpaghettiPad](https://github.com/chrissotraidis/spaghettipad) | `4f6bb0c` | Apple-platform research reference only | Reference-only; not fetched or linked into PaperPad by the current build |
+
+## Transitive build inputs
+
+ReCut vendors N64ModernRuntime, N64Recomp, RT64, shader compilers, and their submodules. The build also uses Apple SDK frameworks and host tools including CMake, Ninja, Python, Rust/Cargo, GNU cpp, and GNU binutils. The table above is not a complete binary-notice manifest.
+
+Before distributing a binary:
+
+1. enumerate the exact linked libraries and bundled resources from the final artifact;
+2. copy applicable license and notice texts from the exact pinned/fetched revisions;
+3. verify that `apple/app/ThirdPartyNotices.txt` matches that artifact rather than relying on this inventory; and
+4. repeat the rights and package audit in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+
+See [RIGHTS_AND_LICENSES.md](../RIGHTS_AND_LICENSES.md). This inventory is engineering documentation, not legal advice.

@@ -1,7 +1,27 @@
 # PaperPad test evidence
 
-Dates use America/Chicago local time. Each entry records target, commands,
-logs, screenshots, gameplay checks, and outcome.
+This is a chronological engineering record. Older failure rows describe the
+binary and source state at their timestamp; they are not current release
+claims. `docs/STATUS.md` is authoritative for the latest acceptance boundary.
+Dates use America/Chicago local time.
+
+## 2026-08-09 release audit
+
+| Target | Exercise | Result |
+|---|---|---|
+| Apple Silicon macOS | Current ROM-backed app launch; intro, name/file flow, early gameplay, keyboard input, clean quit | Passed the exercised route; screenshots `docs/release-audit/03-paperpad-macos-prologue.png` through `06-paperpad-macos-gameplay.png` |
+| iPad Pro 11-inch Simulator | ROM-free app install plus private first-run input; touch Start/A/D-pad/analog; title, file creation, early movement, Peach's Castle entry | Passed; no crash during the exercised route |
+| iPad Pro 11-inch Simulator | Retina/window correction in portrait and landscape with original 4:3 aspect | Passed; corrected landscape capture `docs/release-audit/10-paperpad-ios-retina-landscape.png`; earlier quarter-size `09-paperpad-ios-first-play.png` retained as before evidence |
+| iPad Pro 11-inch Simulator | Persistent PaperPad Menu; volume, resolution, aspect, touch visibility, opacity, layout edit/reset, ROM manager | Controls present and operable; touch visibility toggled off and restored; settings capture `docs/release-audit/11-paperpad-ios-settings.png` |
+| Original-game visual comparison | PaperPad opening, file select, and early gameplay compared against Nintendo archive/secondary capture in one review input | Matching 4:3 composition, theater geometry, palette, curtain/checkerboard staging, dialogue styling, and layered cutout presentation; sources recorded in README |
+| Apple Silicon macOS final teardown | Final app was launched, rendered, accepted keyboard input, and quit repeatedly; fresh crash reports initially exposed an RT64 workload autorelease fault and then a parked guest-thread/RDRAM race | Both root causes converted into maintained patches; three subsequent launch/render/input/quit cycles produced no new crash reports |
+| iPad Pro 11-inch Simulator final shared-runtime rebuild | Rebuilt after the Metal lifetime and Apple process-exit patches; installed the ROM-free app and launched the existing private test container | Build, install, native 2420x1668 drawable, rendering, touch overlay, and accessible PaperPad Menu passed; app terminated and Simulator shut down before any other target |
+
+Remaining release acceptance is listed in `docs/STATUS.md` and
+`docs/RELEASE_CHECKLIST.md`; this audit is not a complete-game or physical-device
+certification.
+
+## Historical engineering log
 
 | Date | Target | Command/check | Result |
 |---|---|---|---|

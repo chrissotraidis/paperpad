@@ -1,0 +1,30 @@
+diff --git a/lib/rt64/src/metal/rt64_metal.cpp b/lib/rt64/src/metal/rt64_metal.cpp
+index dc3d9d3..808c55c 100644
+--- a/lib/rt64/src/metal/rt64_metal.cpp
++++ b/lib/rt64/src/metal/rt64_metal.cpp
+@@ -6,6 +6,7 @@
+ #include <Metal/Metal.hpp>
+ #include <QuartzCore/QuartzCore.hpp>
+ #include <CoreFoundation/CoreFoundation.h>
++#include <TargetConditionals.h>
+ 
+ #include <algorithm>
+ #include <xxHash/xxh3.h>
+@@ -3227,7 +3228,17 @@ namespace RT64 {
+ 
+     bool MetalInterface::isValid() const {
+         // check if Metal is available and we support bindless textures: GPUFamilyMac2 or GPUFamilyApple6
++#if TARGET_OS_IPHONE
++        // CopyAllDevices is a macOS enumeration API and reports an empty list
++        // in iOS Simulator even when CreateSystemDefaultDevice succeeded.
++#if TARGET_OS_SIMULATOR
++        return device != nullptr;
++#else
++        return device != nullptr && device->supportsFamily(MTL::GPUFamilyApple6);
++#endif
++#else
+         return MTL::CopyAllDevices()->count() > 0 && (device->supportsFamily(MTL::GPUFamilyMac2) || device->supportsFamily(MTL::GPUFamilyApple6));
++#endif
+     }
+ 
+     void MetalInterface::createResolvePipelineState() {

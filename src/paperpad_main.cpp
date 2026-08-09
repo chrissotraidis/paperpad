@@ -37,19 +37,6 @@
 
 #include "paperpad_input.h"
 
-// Runtime health counters (mstan N64ModernRuntime) for freeze diagnosis.
-extern "C" uint64_t ultramodern_submit_gfx_count(void);
-extern "C" uint64_t ultramodern_submit_audio_count(void);
-extern "C" uint64_t ultramodern_submit_other_count(void);
-extern "C" uint64_t ultramodern_sp_complete_count(void);
-extern "C" uint64_t ultramodern_dp_complete_count(void);
-extern "C" uint8_t* ultramodern_get_rdram(void);
-extern "C" void ultramodern_mesg_recent_copy(
-    void* out_void, size_t cap, size_t* n_written, uint64_t* next_seq_out);
-extern "C" size_t ultramodern_mesg_event_size(void);
-extern "C" int paperpad_dump_render_state(void);
-bool ultramodern::external_message_pending();
-
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y);
 extern "C" void paperpad_touch_attach(void* ui_window);
@@ -64,8 +51,6 @@ namespace paper_mario {
 extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
 extern "C" recomp_func_t* get_function(int32_t addr);
 gpr get_entrypoint_address();
-
-extern RspUcodeFunc n_aspMain;
 
 namespace {
     constexpr uint64_t paper_mario_us_xxh3 = 0x1A478F060D5194CFULL;
@@ -228,6 +213,11 @@ namespace {
 
     std::mutex settings_mutex;
     AppInputSettings input_settings = make_default_input_settings();
+    // Preserve very short key taps until the next emulated input poll. SDL's
+    // event pump and the game-input callback run on different host threads;
+    // polling SDL_GetKeyboardState alone can miss a keydown+keyup pair that
+    // occurs between two game frames.
+    std::array<std::atomic<uint8_t>, input_action_count> keyboard_tap_latches{};
     int active_controller_device_index = -1;
 
     std::filesystem::path app_base_path() {
@@ -398,6 +388,17 @@ namespace {
                     controller = nullptr;
                     active_controller_device_index = -1;
                     open_first_controller();
+                }
+            }
+            else if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
+                std::lock_guard<std::mutex> lock(settings_mutex);
+                for (int i = 0; i < input_action_count; i++) {
+                    if (input_settings.keyboard_bindings[i] == event.key.keysym.scancode) {
+                        // A few runtime polls can occur inside one rendered
+                        // frame. Retain the tap across four polls so the game
+                        // sees it in its pressed-button edge calculation.
+                        keyboard_tap_latches[i].store(4, std::memory_order_release);
+                    }
                 }
             }
         }
@@ -605,7 +606,17 @@ namespace {
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
         for (int i = 0; i < input_action_count; i++) {
             const SDL_Scancode scancode = input_snapshot.keyboard_bindings[i];
-            if (scancode > SDL_SCANCODE_UNKNOWN && scancode < SDL_NUM_SCANCODES && keys[scancode]) {
+            uint8_t remaining = keyboard_tap_latches[i].load(std::memory_order_acquire);
+            bool tapped = false;
+            while (remaining != 0) {
+                if (keyboard_tap_latches[i].compare_exchange_weak(
+                        remaining, static_cast<uint8_t>(remaining - 1),
+                        std::memory_order_acq_rel, std::memory_order_acquire)) {
+                    tapped = true;
+                    break;
+                }
+            }
+            if (tapped || (scancode > SDL_SCANCODE_UNKNOWN && scancode < SDL_NUM_SCANCODES && keys[scancode])) {
                 apply_input_action(i, 1.0f, out_buttons, out_x, out_y);
             }
 
@@ -643,8 +654,7 @@ namespace {
         return { ultramodern::input::Device::Controller, ultramodern::input::Pak::RumblePak };
     }
 
-    RspUcodeFunc* get_rsp_microcode(uint8_t* rdram, const OSTask* task) {
-        (void)rdram;
+    RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
         // Audio (M_AUDTASK) is handled by the runtime's HLE NAUDIO backend
         // (mupen64plus-rsp-hle) since 2026-08-05; the recompiled n_aspMain
         // ucode is broken for Paper Mario (command pointer never set) and
@@ -657,9 +667,8 @@ namespace {
         if (drop_audio_rsp && task->t.type == M_AUDTASK) {
             return nullptr;
         }
-        if (task->t.type == M_AUDTASK) {
-            return n_aspMain;
-        }
+        // M_AUDTASK is consumed before this callback by the pinned runtime's
+        // NAUDIO HLE backend, so no recompiled audio microcode is required.
         std::fprintf(stderr, "Unknown non-graphics RSP task type: %u\n", task->t.type);
         return nullptr;
     }
@@ -724,9 +733,23 @@ namespace {
             return true;
         }
 
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+        // A Finder-launched .app has no command-line ROM argument. Match the
+        // mobile first-run experience with a native macOS picker, then let
+        // N64ModernRuntime validate and store the selected ROM privately.
+        const char* selected_rom = paperpad_apple_choose_rom_path();
+        if (selected_rom != nullptr) {
+            const std::filesystem::path selected_path(selected_rom);
+            free(const_cast<char*>(selected_rom));
+            if (install_rom_from_path(selected_path, game_id)) {
+                return true;
+            }
+        }
+#endif
+
         show_message(
-            "PaperPad cannot find an installed ROM. Place your legally dumped Paper Mario (U) ROM at user/pm.n64.us.z64 "
-            "or pass the ROM path as the first command-line argument.");
+            "PaperPad cannot find an installed ROM. Choose your legally dumped Paper Mario (US) 1.0 ROM to continue, "
+            "or pass its path as the first command-line argument.");
         return false;
     }
 } // namespace
@@ -783,108 +806,6 @@ extern "C"
 #endif
 int PAPERPAD_MAIN(int argc, char** argv) {
     setvbuf(stderr, nullptr, _IONBF, 0);
-    // Periodic host-side health log: game-thread task submission vs
-    // completion counters + external message backlog. Lets a freeze be
-    // characterized as "game not submitting" vs "stuck downstream".
-    std::thread([]() {
-        uint64_t last_gfx = 0, last_sp = 0, last_dp = 0, last_audio = 0;
-        FILE* hf = std::fopen((app_config_path() / "health.log").string().c_str(), "a");
-        FILE* health_f = hf ? hf : stderr;
-        int stalled_ticks = 0;
-        bool freeze_dumped = false;
-        for (int i = 0; ; ++i) {
-            std::this_thread::sleep_for(std::chrono::seconds(2));
-            uint64_t gfx = ultramodern_submit_gfx_count();
-            uint64_t audio = ultramodern_submit_audio_count();
-            uint64_t sp = ultramodern_sp_complete_count();
-            uint64_t dp = ultramodern_dp_complete_count();
-            uint64_t dgfx = gfx - last_gfx;
-            std::fprintf(health_f,
-                "[health] t=%lld gfx=+%llu audio=+%llu sp=+%llu dp=+%llu ext_pending=%d queued=%u\n",
-                (long long)(i * 2),
-                (unsigned long long)dgfx,
-                (unsigned long long)(audio - last_audio),
-                (unsigned long long)(sp - last_sp),
-                (unsigned long long)(dp - last_dp),
-                ultramodern::external_message_pending() ? 1 : 0,
-                audio_device != 0 ? SDL_GetQueuedAudioSize(audio_device) : 0u);
-            std::fflush(health_f);
-            if ((i % 5) == 0) {
-                paperpad_dump_render_state();
-                std::fflush(stderr);
-            }
-            last_gfx = gfx; last_audio = audio; last_sp = sp; last_dp = dp;
-
-            // Freeze triage: once task submission stalls for two consecutive
-            // ticks, dump the guest startup state + the recent message-log
-            // tail so the blocking wait can be identified from evidence.
-            if (dgfx == 0) {
-                stalled_ticks++;
-            } else {
-                stalled_ticks = 0;
-                freeze_dumped = false;
-            }
-            if (stalled_ticks >= 2 && !freeze_dumped) {
-                freeze_dumped = true;
-                uint8_t* rdram = ultramodern_get_rdram();
-                std::fprintf(health_f, "[freeze] gfx stalled for %d ticks\n", stalled_ticks);
-                if (rdram != nullptr) {
-                    constexpr uint64_t kMemBase = 0xFFFFFFFF80000000ull;
-                    constexpr uint32_t kMemMask = 0x3FFFFFFFu;
-                    auto gw = [&](uint64_t vaddr) -> uint32_t {
-                        return *reinterpret_cast<uint32_t*>(
-                            rdram + ((vaddr - kMemBase) & kMemMask));
-                    };
-                    auto gb = [&](uint64_t vaddr) -> uint8_t {
-                        return *reinterpret_cast<uint8_t*>(
-                            rdram + ((vaddr - kMemBase) & kMemMask));
-                    };
-                    uint32_t status = gw(0x8007419C);           // gGameStatusPtr
-                    if (status != 0) {
-                        std::fprintf(health_f,
-                            "[freeze] gGameStatusPtr=0x%X pressed=0x%X mainScriptID=%d introPart=%d startupState=%d D_800A0964=%u\n",
-                            status,
-                            gw(status + 0x10),
-                            (int)gw(status + 0x6C),
-                            (int)gb(status + 0xA8),
-                            (int)gb(status + 0xAC),
-                            gw(0x800A0964));
-                    } else {
-                        std::fprintf(health_f, "[freeze] gGameStatusPtr is null\n");
-                    }
-                }
-                // Recent message-log tail (op, queue, msg, valid before/after).
-                const size_t kEventSize = ultramodern_mesg_event_size();
-                if (kEventSize >= 32 && kEventSize <= 64) {
-                    std::vector<uint8_t> buf(kEventSize * 8);
-                    size_t n = 0;
-                    uint64_t seq = 0;
-                    ultramodern_mesg_recent_copy(buf.data(), 8, &n, &seq);
-                    std::fprintf(health_f, "[freeze] mesg seq=%llu n=%zu\n",
-                                 (unsigned long long)seq, n);
-                    for (size_t e = 0; e < n; e++) {
-                        const uint8_t* p = buf.data() + e * kEventSize;
-                        auto rd32 = [&](size_t off) -> uint32_t {
-                            uint32_t v = 0;
-                            for (int b = 0; b < 4; b++) v |= (uint32_t)p[off + b] << (8 * b);
-                            return v;
-                        };
-                        auto rd16 = [&](size_t off) -> uint16_t {
-                            uint16_t v = 0;
-                            for (int b = 0; b < 2; b++) v |= (uint16_t)p[off + b] << (8 * b);
-                            return v;
-                        };
-                        std::fprintf(health_f,
-                            "[freeze]   op=%u mq=0x%X msg=0x%X tid=%u val=%u->%u block=%u\n",
-                            (unsigned)p[34], rd32(16), rd32(20), (unsigned)rd16(28),
-                            (unsigned)rd16(30), (unsigned)rd16(32),
-                            (unsigned)p[35]);
-                    }
-                }
-                std::fflush(health_f);
-            }
-        }
-    }).detach();
 #if defined(__APPLE__)
     // RT64's automatic API selection prefers D3D12; on Apple, Metal is the
     // supported RHI and must be selected explicitly.

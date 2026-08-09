@@ -110,6 +110,8 @@ namespace {
             return ultramodern::renderer::GraphicsApi::Metal;
         case RT64::UserConfiguration::GraphicsAPI::Automatic:
             return ultramodern::renderer::GraphicsApi::Auto;
+        case RT64::UserConfiguration::GraphicsAPI::OptionCount:
+            break;
         }
 
         assert(false);
@@ -190,6 +192,9 @@ namespace {
             app->userConfig.graphicsAPI = RT64::UserConfiguration::GraphicsAPI::Metal;
             break;
         case ultramodern::renderer::GraphicsApi::Auto:
+            app->userConfig.graphicsAPI = RT64::UserConfiguration::GraphicsAPI::Automatic;
+            break;
+        case ultramodern::renderer::GraphicsApi::OptionCount:
             app->userConfig.graphicsAPI = RT64::UserConfiguration::GraphicsAPI::Automatic;
             break;
         }
@@ -332,10 +337,6 @@ namespace {
         }
 
         void update_screen() override {
-            static uint64_t frame_count = 0;
-            if ((++frame_count % 300) == 0) {
-                std::fprintf(stderr, "[paperpad-rt64] screen updates: %llu\n", (unsigned long long)frame_count);
-            }
             app->updateScreen();
         }
 
@@ -404,6 +405,12 @@ namespace {
 
             const uint32_t monitor_rate = app->presentQueue->ext.sharedResources->swapChainRate;
             return monitor_rate != 0 ? monitor_rate : 60;
+        }
+
+        uint64_t get_presented_frame_count() const override {
+            return app
+                ? app->presentQueue->ext.sharedResources->presentedFrameCount.load(std::memory_order_relaxed)
+                : 0;
         }
 
         float get_resolution_scale() const override {

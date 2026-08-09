@@ -1,0 +1,306 @@
+--- a/lib/rt64/src/common/rt64_thread.cpp
++++ b/lib/rt64/src/common/rt64_thread.cpp
+@@ -14,6 +14,11 @@
+ #   include <pthread.h>
+ #endif
+ 
++#if defined(__APPLE__)
++extern "C" void *objc_autoreleasePoolPush(void);
++extern "C" void objc_autoreleasePoolPop(void *ctxt);
++#endif
++
+ namespace RT64 {
+ #   if defined(_WIN32)
+     static int toWindowsPriority(Thread::Priority priority) {
+@@ -75,4 +80,14 @@
+         std::this_thread::sleep_for(std::chrono::milliseconds(millis));
+ #   endif
+     }
++
++#if defined(__APPLE__)
++    AppleAutoreleasePoolMarker::AppleAutoreleasePoolMarker() {
++        poolToken = objc_autoreleasePoolPush();
++    }
++
++    AppleAutoreleasePoolMarker::~AppleAutoreleasePoolMarker() {
++        objc_autoreleasePoolPop(poolToken);
++    }
++#endif
+ };
+--- a/lib/rt64/src/common/rt64_thread.h
++++ b/lib/rt64/src/common/rt64_thread.h
+@@ -22,4 +22,14 @@
+         static void setCurrentThreadPriority(Priority priority);
+         static void sleepMilliseconds(uint32_t millis);
+     };
+-};
+\ No newline at end of file
++
++#if defined(__APPLE__)
++    class AppleAutoreleasePoolMarker {
++        void *poolToken;
++
++    public:
++        AppleAutoreleasePoolMarker();
++        ~AppleAutoreleasePoolMarker();
++    };
++#endif
++};
+--- a/lib/rt64/src/hle/rt64_application.cpp
++++ b/lib/rt64/src/hle/rt64_application.cpp
+@@ -394,7 +394,17 @@
+         return SetupResult::Success;
+     }
+ 
+-    Application::~Application() {}
++    Application::~Application() {
++        // Stop encoder threads before the Metal device and render resources
++        // begin member teardown. This also lets their autorelease pools drain
++        // while every referenced Metal object is still alive.
++        if (presentQueue != nullptr) {
++            presentQueue->stop();
++        }
++        if (workloadQueue != nullptr) {
++            workloadQueue->stop();
++        }
++    }
+ 
+     void Application::processDisplayLists(uint8_t *memory, uint32_t dlStartAddress, uint32_t dlEndAddress, bool isHLE) {
+         if (state->debuggerInspector.paused) {
+--- a/lib/rt64/src/hle/rt64_present_queue.cpp
++++ b/lib/rt64/src/hle/rt64_present_queue.cpp
+@@ -17,12 +17,17 @@
+     }
+ 
+     PresentQueue::~PresentQueue() {
++        stop();
++    }
++
++    void PresentQueue::stop() {
+         presentThreadRunning = false;
+         cursorCondition.notify_all();
+ 
+         if (presentThread != nullptr) {
+             presentThread->join();
+             delete presentThread;
++            presentThread = nullptr;
+         }
+ 
+         presentIdCondition.notify_all();
+@@ -455,6 +460,10 @@
+     void PresentQueue::threadLoop() {
+         Thread::setCurrentThreadName("RT64 Present");
+ 
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
++
+         // Create the semaphores used by the swap chains.
+         acquiredSemaphore = ext.device->createCommandSemaphore();
+         drawSemaphore = ext.device->createCommandSemaphore();
+--- a/lib/rt64/src/hle/rt64_present_queue.h
++++ b/lib/rt64/src/hle/rt64_present_queue.h
+@@ -67,6 +67,7 @@
+         void waitForIdle();
+         void waitForPresentId(uint64_t waitId);
+         void setup(const External &ext);
++        void stop();
+         void threadPresent(const Present &present, bool &swapChainValid);
+         void skipInterpolation();
+         void notifyPresentId(const Present &present);
+@@ -74,4 +75,4 @@
+         void threadAdvanceBarrier();
+         void threadLoop();
+     };
+-};
+\ No newline at end of file
++};
+--- a/lib/rt64/src/hle/rt64_workload_queue.cpp
++++ b/lib/rt64/src/hle/rt64_workload_queue.cpp
+@@ -21,6 +21,10 @@
+     }
+ 
+     WorkloadQueue::~WorkloadQueue() {
++        stop();
++    }
++
++    void WorkloadQueue::stop() {
+         threadsRunning = false;
+         cursorCondition.notify_all();
+         idleCondition.notify_all();
+@@ -28,11 +32,13 @@
+         if (renderThread != nullptr) {
+             renderThread->join();
+             delete renderThread;
++            renderThread = nullptr;
+         }
+ 
+         if (idleThread != nullptr) {
+             idleThread->join();
+             delete idleThread;
++            idleThread = nullptr;
+         }
+ 
+         workloadIdCondition.notify_all();
+@@ -291,6 +297,9 @@
+         float deltaTimeMs, RenderTargetKey overrideTargetKey, int32_t overrideTargetFbPairIndex, RenderTarget *overrideTarget,
+         uint32_t overrideTargetModifier, bool uploadVelocity, bool uploadExtras, bool interpolateTiles)
+     {
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker framePool;
++#endif
+ #   if ENABLE_HIGH_RESOLUTION_RENDERER
+         std::scoped_lock<std::mutex> managerLock(ext.sharedResources->workloadMutex);
+         FramebufferManager &fbManager = ext.sharedResources->framebufferManager;
+@@ -852,6 +861,10 @@
+ 
+     void WorkloadQueue::renderThreadLoop() {
+         Thread::setCurrentThreadName("RT64 Workload");
++
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         WorkloadConfiguration workloadConfig;
+         int64_t logicalTicks = 0;
+@@ -1173,6 +1186,9 @@
+     }
+     
+     void WorkloadQueue::idleThreadLoop() {
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+         // Beware traveler as you enter the zone of dirty driver hacks. Given N64 games are not exactly a demanding thing to render
+         // nowadays for modern GPUs and due to how the plugin's cooperative multiqueue system works, it's sometimes just not possible
+         // to keep the GPU busy at all times. It is often the case that the GPU might've already rendered all the frames it needed to
+--- a/lib/rt64/src/hle/rt64_workload_queue.h
++++ b/lib/rt64/src/hle/rt64_workload_queue.h
+@@ -107,6 +107,7 @@
+         void waitForIdle();
+         void waitForWorkloadId(uint64_t waitId);
+         void setup(const External &ext);
++        void stop();
+         void updateMultisampling();
+         void threadConfigurationUpdate(WorkloadConfiguration &workloadConfig);
+         void threadConfigurationValidate();
+@@ -120,4 +121,4 @@
+         void renderThreadLoop();
+         void idleThreadLoop();
+     };
+-};
+\ No newline at end of file
++};
+--- a/lib/rt64/src/metal/rt64_metal.cpp
++++ b/lib/rt64/src/metal/rt64_metal.cpp
+@@ -1059,8 +1059,6 @@
+         // Create texture with configured descriptor and alignment
+         MTL::TextureDescriptor *descriptor = MTL::TextureDescriptor::textureBufferDescriptor(pixelFormat, width, options, usage);
+         this->texture = buffer->mtl->newTexture(descriptor, 0, bytesPerRow);
+-
+-        descriptor->release();
+     }
+ 
+     MetalBufferFormattedView::~MetalBufferFormattedView() {
+@@ -1187,7 +1185,6 @@
+     }
+ 
+     MetalShader::~MetalShader() {
+-        functionName->release();
+         library->release();
+     }
+ 
+@@ -1934,9 +1931,7 @@
+         this->queue = queue;
+     }
+ 
+-    MetalCommandList::~MetalCommandList() {
+-        mtl->release();
+-    }
++    MetalCommandList::~MetalCommandList() {}
+ 
+     void MetalCommandList::begin() {
+         assert(mtl == nullptr);
+@@ -1955,7 +1950,6 @@
+ 
+     void MetalCommandList::commit() {
+         mtl->commit();
+-        mtl->release();
+         mtl = nullptr;
+     }
+ 
+@@ -2859,6 +2853,7 @@
+ 
+         if (activeBlitEncoder == nullptr) {
+             activeBlitEncoder = mtl->blitCommandEncoder(device->renderInterface->reusableBlitDescriptor);
++            activeBlitEncoder->retain();
+             activeBlitEncoder->setLabel(MTLSTR("Copy Blit Encoder"));
+         }
+     }
+@@ -2879,6 +2874,7 @@
+ 
+         if (activeResolveComputeEncoder == nullptr) {
+             activeResolveComputeEncoder = mtl->computeCommandEncoder();
++            activeResolveComputeEncoder->retain();
+             activeResolveComputeEncoder->setLabel(MTLSTR("Resolve Texture Encoder"));
+             activeResolveComputeEncoder->setComputePipelineState(device->renderInterface->resolveTexturePipelineState);
+         }
+--- a/lib/rt64/src/render/rt64_buffer_uploader.cpp
++++ b/lib/rt64/src/render/rt64_buffer_uploader.cpp
+@@ -41,6 +41,9 @@
+ 
+     void BufferUploader::threadLoop() {
+         Thread::setCurrentThreadName("RT64 Buffer");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         running = true;
+ 
+@@ -172,4 +175,4 @@
+             return !workAvailable;
+         });
+     }
+-};
+\ No newline at end of file
++};
+--- a/lib/rt64/src/render/rt64_raster_shader_cache.cpp
++++ b/lib/rt64/src/render/rt64_raster_shader_cache.cpp
+@@ -29,6 +29,9 @@
+ 
+     void RasterShaderCache::CompilationThread::loop() {
+         Thread::setCurrentThreadName("RT64 Shader");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         // The shader compilation thread should have idle priority by default as the application can use the ubershader in the meantime.
+         Thread::setCurrentThreadPriority(Thread::Priority::Idle);
+@@ -179,4 +182,4 @@
+         std::unique_lock<std::mutex> lock(GPUShadersMutex);
+         return GPUShaders.size();
+     }
+-};
+\ No newline at end of file
++};
+--- a/lib/rt64/src/render/rt64_texture_cache.cpp
++++ b/lib/rt64/src/render/rt64_texture_cache.cpp
+@@ -406,6 +406,9 @@
+ 
+     void TextureCache::StreamThread::loop() {
+         Thread::setCurrentThreadName("RT64 Stream");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         // Texture streaming threads should have a priority somewhere inbetween the main threads and the shader compilation threads.
+         Thread::setCurrentThreadPriority(Thread::Priority::Low);
+@@ -965,6 +968,9 @@
+ 
+     void TextureCache::uploadThreadLoop() {
+         Thread::setCurrentThreadName("RT64 Texture");
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
+ 
+         uploadThreadRunning = true;
+ 

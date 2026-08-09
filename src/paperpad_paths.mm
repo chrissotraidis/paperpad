@@ -5,6 +5,8 @@
 
 #if TARGET_OS_IPHONE
 #import <UIKit/UIKit.h>
+#else
+#import <AppKit/AppKit.h>
 #endif
 
 const char* paperpad_apple_application_support_dir(void) {
@@ -15,7 +17,37 @@ const char* paperpad_apple_application_support_dir(void) {
     if (url == nil) {
         return nullptr;
     }
-    return strdup([[url path] UTF8String]);
+    NSURL* paperpad = [url URLByAppendingPathComponent:@"PaperPad" isDirectory:YES];
+    NSError* error = nil;
+    if (![[NSFileManager defaultManager] createDirectoryAtURL:paperpad
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:&error]) {
+        std::fprintf(stderr, "[paperpad] could not create Application Support directory: %s\n",
+                     [[error localizedDescription] UTF8String]);
+        return nullptr;
+    }
+    return strdup([[paperpad path] UTF8String]);
+}
+
+const char* paperpad_apple_choose_rom_path(void) {
+#if TARGET_OS_IPHONE
+    return nullptr;
+#else
+    @autoreleasepool {
+        NSOpenPanel* panel = [NSOpenPanel openPanel];
+        panel.title = @"Choose Paper Mario (US) 1.0 ROM";
+        panel.message = @"PaperPad accepts .z64, .v64, and .n64 files and validates the exact supported revision.";
+        panel.prompt = @"Choose ROM";
+        panel.canChooseDirectories = NO;
+        panel.allowsMultipleSelection = NO;
+        panel.allowedFileTypes = @[@"z64", @"v64", @"n64"];
+        if ([panel runModal] != NSModalResponseOK || panel.URL == nil) {
+            return nullptr;
+        }
+        return strdup([[panel.URL path] UTF8String]);
+    }
+#endif
 }
 
 #if TARGET_OS_IPHONE

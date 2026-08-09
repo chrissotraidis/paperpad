@@ -22,7 +22,7 @@ input, private user files, lifecycle handling, and audited packaging.
 
 Strengths:
 - Current static-recomp desktop port for Paper Mario (US), the exact game and
-  revision in `ref/Paper Mario (U) [!].v64`.
+  revision validated from a user-owned input into ignored `generated/rom/`.
 - Built with the N64Recomp toolchain (AOT native code) and RT64 rendering,
   the same family AnnePad proved on Apple targets.
 - Does not distribute ROMs or Nintendo assets; requires the user's own ROM.

@@ -1,0 +1,176 @@
+diff --git a/lib/rt64/src/apple/rt64_apple.mm b/lib/rt64/src/apple/rt64_apple.mm
+index 9ef49c6..5eae932 100644
+--- a/lib/rt64/src/apple/rt64_apple.mm
++++ b/lib/rt64/src/apple/rt64_apple.mm
+@@ -1,30 +1,24 @@
+ #include "rt64_apple.h"
+ 
+-#import <AppKit/AppKit.h>
+ #import <Foundation/Foundation.h>
++#import <TargetConditionals.h>
++#if TARGET_OS_IPHONE
++#import <UIKit/UIKit.h>
++#else
++#import <AppKit/AppKit.h>
++#endif
+ 
+ const char* GetHomeDirectory() {
+     return strdup([NSHomeDirectory() UTF8String]);
+ }
+ 
+-// MARK: - CocoaWindow
+-
+ CocoaWindow::CocoaWindow(void* window)
+     : windowHandle(window), cachedRefreshRate(0) {
+     cachedAttributes = {0, 0, 0, 0};
+ 
+     if ([NSThread isMainThread]) {
+-        NSWindow *nsWindow = (__bridge NSWindow *)windowHandle;
+-        NSRect contentFrame = [[nsWindow contentView] frame];
+-        cachedAttributes.x = contentFrame.origin.x;
+-        cachedAttributes.y = contentFrame.origin.y;
+-        cachedAttributes.width = contentFrame.size.width;
+-        cachedAttributes.height = contentFrame.size.height;
+-
+-        NSScreen *screen = [nsWindow screen];
+-        if (@available(macOS 12.0, *)) {
+-            cachedRefreshRate.store((int)[screen maximumFramesPerSecond]);
+-        }
++        updateWindowAttributesInternal(false);
++        updateRefreshRateInternal(false);
+     } else {
+         updateWindowAttributesInternal(true);
+         updateRefreshRateInternal(true);
+@@ -35,18 +29,31 @@ CocoaWindow::~CocoaWindow() {}
+ 
+ void CocoaWindow::updateWindowAttributesInternal(bool forceSync) {
+     auto updateBlock = ^{
++#if TARGET_OS_IPHONE
++        UIView *view = (__bridge UIView *)windowHandle;
++        CGRect contentFrame = view.bounds;
++        // RT64's swap-chain dimensions are pixel dimensions. UIKit view bounds
++        // are measured in points, so reporting them directly makes rendering
++        // cover only one quarter of a Retina drawable (half each dimension).
++        UIScreen *screen = view.window.screen ?: UIScreen.mainScreen;
++        const CGFloat contentScale = MAX(screen.scale, 1.0);
++#else
+         NSWindow *nsWindow = (__bridge NSWindow *)windowHandle;
+         NSRect contentFrame = [[nsWindow contentView] frame];
++        const CGFloat contentScale = 1.0;
+-        
++#endif
++
+         std::lock_guard<std::mutex> lock(attributesMutex);
+-        cachedAttributes.x = contentFrame.origin.x;
+-        cachedAttributes.y = contentFrame.origin.y;
+-        cachedAttributes.width = contentFrame.size.width;
+-        cachedAttributes.height = contentFrame.size.height;
++        cachedAttributes.x = static_cast<int>(contentFrame.origin.x);
++        cachedAttributes.y = static_cast<int>(contentFrame.origin.y);
++        cachedAttributes.width = static_cast<int>(contentFrame.size.width * contentScale);
++        cachedAttributes.height = static_cast<int>(contentFrame.size.height * contentScale);
+     };
+-    
++
+     if (forceSync) {
+         dispatch_sync(dispatch_get_main_queue(), updateBlock);
++    } else if ([NSThread isMainThread]) {
++        updateBlock();
+     } else {
+         dispatch_async(dispatch_get_main_queue(), updateBlock);
+     }
+@@ -54,15 +61,21 @@ void CocoaWindow::updateWindowAttributesInternal(bool forceSync) {
+ 
+ void CocoaWindow::updateRefreshRateInternal(bool forceSync) {
+     auto updateBlock = ^{
++#if TARGET_OS_IPHONE
++        cachedRefreshRate.store(static_cast<int>([UIScreen mainScreen].maximumFramesPerSecond));
++#else
+         NSWindow *nsWindow = (__bridge NSWindow *)windowHandle;
+         NSScreen *screen = [nsWindow screen];
+         if (@available(macOS 12.0, *)) {
+-            cachedRefreshRate.store((int)[screen maximumFramesPerSecond]);
++            cachedRefreshRate.store(static_cast<int>([screen maximumFramesPerSecond]));
+         }
++#endif
+     };
+-    
++
+     if (forceSync) {
+         dispatch_sync(dispatch_get_main_queue(), updateBlock);
++    } else if ([NSThread isMainThread]) {
++        updateBlock();
+     } else {
+         dispatch_async(dispatch_get_main_queue(), updateBlock);
+     }
+@@ -70,50 +83,33 @@ void CocoaWindow::updateRefreshRateInternal(bool forceSync) {
+ 
+ void CocoaWindow::getWindowAttributes(CocoaWindowAttributes* attributes) const {
+     if ([NSThread isMainThread]) {
+-        NSWindow *nsWindow = (__bridge NSWindow *)windowHandle;
+-        NSRect contentFrame = [[nsWindow contentView] frame];
+-
+-        {
+-            std::lock_guard<std::mutex> lock(attributesMutex);
+-            const_cast<CocoaWindow*>(this)->cachedAttributes.x = contentFrame.origin.x;
+-            const_cast<CocoaWindow*>(this)->cachedAttributes.y = contentFrame.origin.y;
+-            const_cast<CocoaWindow*>(this)->cachedAttributes.width = contentFrame.size.width;
+-            const_cast<CocoaWindow*>(this)->cachedAttributes.height = contentFrame.size.height;
+-
+-            *attributes = cachedAttributes;
+-        }
+-    } else {
+-        {
+-            std::lock_guard<std::mutex> lock(attributesMutex);
+-            *attributes = cachedAttributes;
+-        }
++        const_cast<CocoaWindow*>(this)->updateWindowAttributesInternal(false);
++    }
+ 
++    {
++        std::lock_guard<std::mutex> lock(attributesMutex);
++        *attributes = cachedAttributes;
++    }
++
++    if (![NSThread isMainThread]) {
+         const_cast<CocoaWindow*>(this)->updateWindowAttributesInternal(false);
+     }
+ }
+ 
+ int CocoaWindow::getRefreshRate() const {
+     if ([NSThread isMainThread]) {
+-        NSWindow *nsWindow = (__bridge NSWindow *)windowHandle;
+-        NSScreen *screen = [nsWindow screen];
+-
+-        if (@available(macOS 12.0, *)) {
+-            int freshRate = (int)[screen maximumFramesPerSecond];
+-            const_cast<CocoaWindow*>(this)->cachedRefreshRate.store(freshRate);
+-            return freshRate;
+-        }
+-
+-        return cachedRefreshRate.load();
+-    } else {
+-        int rate = cachedRefreshRate.load();
+-
+         const_cast<CocoaWindow*>(this)->updateRefreshRateInternal(false);
++    }
+ 
+-        return rate;
++    const int rate = cachedRefreshRate.load();
++    if (![NSThread isMainThread]) {
++        const_cast<CocoaWindow*>(this)->updateRefreshRateInternal(false);
+     }
++    return rate;
+ }
+ 
+ void CocoaWindow::toggleFullscreen() {
++#if !TARGET_OS_IPHONE
+     if ([NSThread isMainThread]) {
+         NSWindow *nsWindow = (__bridge NSWindow *)windowHandle;
+         [nsWindow toggleFullScreen:NULL];
+@@ -123,4 +119,5 @@ void CocoaWindow::toggleFullscreen() {
+             [nsWindow toggleFullScreen:NULL];
+         });
+     }
++#endif
+ }

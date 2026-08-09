@@ -1,0 +1,46 @@
+diff --git a/lib/rt64/CMakeLists.txt b/lib/rt64/CMakeLists.txt
+--- a/lib/rt64/CMakeLists.txt
++++ b/lib/rt64/CMakeLists.txt
+@@ -70,6 +70,15 @@ set(ZSTD_LEGACY_SUPPORT OFF)
+ set(ZSTD_BUILD_STATIC ON)
+ set(ZSTD_BUILD_SHARED OFF)
+ 
+-add_subdirectory(src/tools/file_to_c)
++option(RT64_BUILD_TOOLS "Build optional RT64 command-line tools" ON)
++if (CMAKE_CROSSCOMPILING)
++    if (NOT FILE_TO_C_PATH)
++        message(FATAL_ERROR "FILE_TO_C_PATH must name a native host file_to_c executable when cross-compiling")
++    endif()
++    add_executable(file_to_c IMPORTED GLOBAL)
++    set_target_properties(file_to_c PROPERTIES IMPORTED_LOCATION "${FILE_TO_C_PATH}")
++else()
++    add_subdirectory(src/tools/file_to_c)
++endif()
+ add_subdirectory(src/contrib/re-spirv)
+ add_subdirectory(src/contrib/nativefiledialog-extended)
+@@ -446,11 +455,21 @@ target_link_libraries(rt64 nfd)
+ target_link_libraries(rt64 libzstd_static)
+ 
+-# Add tools.
+-add_subdirectory(src/tools/texture_hasher)
+-add_subdirectory(src/tools/texture_packer)
++# Add optional command-line tools.
++if (RT64_BUILD_TOOLS)
++    add_subdirectory(src/tools/texture_hasher)
++    add_subdirectory(src/tools/texture_packer)
++endif()
+ 
+ # Add any Apple-specific source files and libraries
+ if (APPLE)
+-    add_subdirectory(src/tools/spirv_cross_msl)
++    if (CMAKE_CROSSCOMPILING)
++        if (NOT SPIRV_CROSS_MSL_PATH)
++            message(FATAL_ERROR "SPIRV_CROSS_MSL_PATH must name a native host spirv_cross_msl executable when cross-compiling")
++        endif()
++        add_executable(spirv_cross_msl IMPORTED GLOBAL)
++        set_target_properties(spirv_cross_msl PROPERTIES IMPORTED_LOCATION "${SPIRV_CROSS_MSL_PATH}")
++    else()
++        add_subdirectory(src/tools/spirv_cross_msl)
++    endif()
+ 
+     target_sources(rt64 PRIVATE

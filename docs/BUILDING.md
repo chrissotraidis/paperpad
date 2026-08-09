@@ -1,123 +1,109 @@
 # Building PaperPad
 
-Work in progress; each phase is filled in as it is proven on this machine.
-`STATUS.md` is authoritative about which phases pass.
+These instructions describe the maintained Apple Silicon source-build paths verified on 2026-08-09. PaperPad does not distribute a ROM or ROM-derived playable output.
 
-## GitHub push limits (learned 2026-08-05)
+## Host requirements
 
-The configured remote (`https://github.com/chrissotraidis/paperpad.git`)
-rejects any single push whose received pack exceeds roughly 1 MB: the
-connection drops with `HTTP 400` / "unexpected disconnect while reading
-sideband packet" and no server message. Verified empirically:
+- Apple Silicon macOS with Xcode and the iOS Simulator SDK
+- CMake, Ninja, Git, jq, Python 3.11+, Rust/Cargo, Homebrew, curl, make, and standard Apple command-line tools
+- GNU `cpp-16`; `scripts/setup-decomp-tools.sh` installs Homebrew GCC when missing
+- Several gigabytes of free disk space
+- A legally obtained, unmodified Paper Mario (US) 1.0 ROM
 
-- Pushes with a sent pack under ~0.9 MB succeed; packs over ~1.2 MB fail
-  consistently, even when every individual file is small and no secrets are
-  present.
-- Workaround used for the initial push: fast-forward `main` in small
-  increments (one logical commit per push, each adding < 1 MB of new objects).
-  This is why the iOS work is split across several commits.
-- Keep committed binary assets small: the AppIcon was compressed from
-  1,022,360 to 663,358 bytes with Xcode's `pngcrush -reduce -brute`, and
-  evidence screenshots are cropped to the game window and downscaled
-  (~360-400 KB each).
-- When adding evidence images, prefer small crops/thumbnails and push in
-  small increments.
+Accepted input byte orders are `.z64`, `.v64`, and `.n64`. The input must normalize to 40 MiB with SHA-1 `3837f44cda784b466c9a2d99df70d77c322b97a0`.
 
-## Vendored SDL2 for macOS (learned 2026-08-05)
+## Clean private generation
 
-The macOS runner no longer links Homebrew's `sdl2-compat` shim (an SDL3
-wrapper that hung in `SDL_ShowWindow`). It links a vendored SDL2 2.32.10
-static library built from `build-ios-deps/sources` (the same source the iOS
-target uses):
-
-```
-cmake -S build-ios-deps/sources -B build-macos-sdl2 \
-  -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TEST=OFF -DSDL_TESTS=OFF \
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build build-macos-sdl2 --target SDL2-static -j 8
-```
-
-`CMakeLists.txt` picks it up automatically when `build-macos-sdl2/libSDL2.a`
-exists; RT64 consumes `SDL2_INCLUDE_DIRS`/`SDL2_LIBRARIES` pointing at it.
-
-## Local runtime patches (not committed)
-
-Patches live in `patches/` and are applied manually to the gitignored
-`ref/` checkouts. Re-apply them after refreshing a checkout. The current set
-(2026-08-05):
-
-`patches/mstan-n64modernruntime/hle-audio-rsp.patch` (the important one):
-- `librecomp/src/rsp.cpp`: restore the upstream `M_AUDTASK` → HLE path.
-  `recomp::rsp::run_task` now branches audio tasks to
-  `run_hle_audio_task`, which copies the OSTask to DMEM[0xFC0] and calls
-  `alist_process_naudio` (mupen64plus-rsp-hle) instead of running the
-  recompiled `n_aspMain` ucode (broken for Paper Mario; see
-  `KNOWN-ISSUES.md` macOS #1).
-- `librecomp/CMakeLists.txt`: builds `alist.c`, `alist_naudio.c`, `audio.c`,
-  `memory.c` from `ref/mupen64plus-rsp-hle/src` into `librecomp`.
-- `ultramodern/src/scheduler_tick.cpp`: export `ultramodern_get_rdram()` for
-  the freeze-state diagnostic in the health logger.
-
-Older pump patches (kept in the checkout, rationale in `KNOWN-ISSUES.md`
-macOS #5): `scheduler_tick.cpp` external-message pump, `mesgqueue.cpp` host
-semaphore signal, `threads.cpp` external-queue wait.
-
-## Prerequisites
-
-- Apple Silicon Mac, macOS 26.x (this checkout: 26.5.2).
-- Xcode 26.6 (17F113) with iOS 26.5 SDK and iOS 18.5/26.5 Simulators.
-- CMake 4.4.0, Ninja, Git, Python 3.14, Homebrew.
-- A legally obtained Paper Mario (US) 1.0 ROM (`.z64`/`.v64`/`.n64` accepted;
-  normalized z64 sha1 `3837f44cda784b466c9a2d99df70d77c322b97a0`).
-- Enough free storage for the decomp build, generated AOT source, and build
-  trees (several GB).
-
-## Phase 0: reference inputs
-
-SpaghettiPad, the pmret decomp, and Paper-Mario-ReCut live in `ref/`
-(gitignored). See `REPOSITORY-INVENTORY.md` for exact pins.
-
-## Phase 1: decomp ELF build (host)
+The top-level build scripts perform the complete pipeline when passed `--rom`:
 
 ```sh
-cd ref/papermario
-python3 -m pip install -r tools/configure/requirements.txt
-brew install md5sha1sum bates64/brew/mips-linux-gnu-gcc
-./install_compilers.sh          # downloads pmret gcc + IDO toolchains
-cargo install pigment64
-# normalize the user ROM:
-python3 - <<'PY'   # byte-swap .v64 -> .z64
-...
-PY
-./configure
-ninja                            # expect "papermario.z64: OK"
+scripts/build-macos-app.sh --rom /absolute/path/to/your/rom
+# or
+scripts/build-ios-simulator.sh --rom /absolute/path/to/your/rom
 ```
 
-Produces `ver/us/build/papermario.elf` (AOT metadata) and the matching ROM.
+That pipeline:
 
-## Phase 2: AOT generation (host)
+1. clones exact pins from `dependencies.lock.json` into ignored `ref/`;
+2. initializes required submodules and disables source-checkout push URLs;
+3. applies the ordered maintained patch series;
+4. creates the pmret Python environment and host toolchain;
+5. normalizes and validates the private ROM under ignored `generated/rom/`;
+6. builds the matching pmret decompilation ELF and verifies its rebuilt ROM hash;
+7. builds N64Recomp/RSPRecomp host tools and generates ignored AOT source;
+8. builds the chosen ROM-free app.
+
+The first clean generation can take significant time. Set `PAPERPAD_BUILD_JOBS` to a positive integer to limit build parallelism.
+
+## Incremental builds
+
+Once `generated/aot/paper_mario_recomp_out/lookup.cpp` exists, omit `--rom`:
 
 ```sh
-# build N64Recomp + RSPRecomp host tools from vendored N64ModernRuntime
-# run N64Recomp with the Paper Mario config -> generated/paper_mario_recomp_out/
-# run RSPRecomp with the n_aspMain config -> generated RSP source
+scripts/build-macos-app.sh
+scripts/build-ios-simulator.sh
 ```
 
-## Phase 3: macOS app
+The scripts still verify/fetch pins and apply maintained patches. They refuse to continue if the generated source is absent.
 
-## Phase 4: iOS Simulator core + app
+## Outputs
 
-## Phase 5: iOS device (unsigned) + packaging
+| Target | Output | Notes |
+|---|---|---|
+| macOS | `build-macos-release/PaperPad.app` | Apple Silicon; ad-hoc signed and verified by the script |
+| iOS Simulator | `build-ios-simulator/Release/PaperPad.app` | arm64 Simulator app; code signing disabled; iPhone+iPad; minimum iOS 15.0 |
 
-## Pushing to GitHub (2026-08-06)
+Both app artifacts must remain ROM-free.
 
-The Homebrew git 2.36.1 on this machine fails to push to GitHub
-("RPC failed; HTTP 400" / "remote end hung up" even for tiny commits — the
-GitHub-Babel edge rejects its sideband). Use the newer Apple git instead:
+## iOS Simulator install and first run
+
+Boot one device, install, and launch:
 
 ```sh
-/usr/bin/git push origin main
+xcrun simctl list devices available
+xcrun simctl boot "iPad Pro 11-inch (M4)"
+open -a Simulator
+xcrun simctl install booted build-ios-simulator/Release/PaperPad.app
+xcrun simctl launch booted com.chrissotraidis.paperpad
 ```
 
-Also keep single-push packs small (the repo has seen silent HTTP 400 for
-packs over ~1MB); split large commits and push them separately.
+Choose your own ROM from the first-run screen. The app validates, normalizes, and stores it privately in that Simulator's Application Support container. Use PaperPad Menu > Manage Game ROM to replace or remove it.
+
+End the session before testing another target:
+
+```sh
+xcrun simctl terminate booted com.chrissotraidis.paperpad || true
+xcrun simctl shutdown booted
+```
+
+Never run PaperPad and a comparison game simultaneously; it makes screenshots, input, audio, CPU, crash, and stability evidence ambiguous.
+
+## Source and patch verification
+
+```sh
+scripts/clone-sources.sh
+scripts/verify-sources.sh
+scripts/apply-patches.sh
+```
+
+`apply-patches.sh` is idempotent: each patch must either apply cleanly or already be present. The historical `patches/mstan-*` files document earlier provenance; the maintained applied series is under `patches/n64recomp/`, `patches/n64modernruntime/`, and `patches/rt64/`.
+
+## Release checks
+
+```sh
+scripts/check-repo-safety.sh
+git diff --check
+bash -n scripts/*.sh
+python3 -m py_compile scripts/generate-n64recomp-config.py
+```
+
+Then follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). A Simulator result does not establish physical-device readiness.
+
+## Troubleshooting
+
+- **Generated game sources are missing**: rerun the selected build with `--rom /absolute/path/...`.
+- **Unsupported ROM size or SHA-1**: confirm the game, region, revision, and that the dump is unmodified. Byte order is normalized automatically.
+- **Pinned checkout is modified**: inspect `ref/` changes. The fetch script intentionally refuses to change revisions over unknown edits. Maintained patches should be applied only through `scripts/apply-patches.sh`.
+- **Missing MIPS assembler**: run `scripts/build-mips-binutils.sh` or rerun the clean build; it creates a local ignored toolchain.
+- **Simulator shows stale code**: terminate the app, reinstall the exact new `.app`, then relaunch. Shut down unused devices.
+- **Crash**: run `scripts/capture-crashes.sh`, remove sensitive/user-specific content from the report, and include exact reproduction steps.

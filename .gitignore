@@ -11,5 +11,20 @@ logs/
 artifacts/
 *.ipa
 
+# Generated Apple packages and signing outputs
+*.app
+*.xcarchive
+*.dSYM
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.p8
+
+# Python/editor caches
+__pycache__/
+*.py[cod]
+.idea/
+.vscode/
+
 # macOS cruft
 .DS_Store
