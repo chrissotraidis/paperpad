@@ -1,6 +1,6 @@
 # Building PaperPad
 
-These instructions describe the maintained Apple Silicon source-build paths verified on 2026-08-09. PaperPad does not distribute a ROM or ROM-derived playable output.
+These instructions describe the maintained Apple Silicon source-build paths. The iOS Simulator path was rebuilt and exercised on 2026-08-10; the macOS path was last exercised on 2026-08-09. PaperPad does not distribute a ROM or ROM-derived playable output.
 
 ## Host requirements
 
@@ -52,6 +52,7 @@ The scripts still verify/fetch pins and apply maintained patches. They refuse to
 |---|---|---|
 | macOS | `build-macos-release/PaperPad.app` | Apple Silicon; ad-hoc signed and verified by the script |
 | iOS Simulator | `build-ios-simulator/Release/PaperPad.app` | arm64 Simulator app; code signing disabled; iPhone+iPad; minimum iOS 15.0 |
+| Physical iOS development | `build-ios-device/Release/PaperPad.app` | arm64 device app; requires your own Apple Development signing team/profile |
 
 Both app artifacts must remain ROM-free.
 
@@ -69,6 +70,8 @@ xcrun simctl launch booted com.chrissotraidis.paperpad
 
 Choose your own ROM from the first-run screen. The app validates, normalizes, and stores it privately in that Simulator's Application Support container. Use PaperPad Menu > Manage Game ROM to replace or remove it.
 
+For settings acceptance, open PaperPad Menu > Settings and exercise Auto, 1x, 2x, 3x, and 4x one at a time. Confirm the selected mode survives a terminate/relaunch and inspect the runtime `[render]` line rather than treating the selected segment alone as renderer proof. `Share Diagnostics…` should present a system share sheet containing `PaperPad-Diagnostics.txt`; inspect the report and cancel the sheet without choosing a destination during local tests.
+
 End the session before testing another target:
 
 ```sh
@@ -77,6 +80,35 @@ xcrun simctl shutdown booted
 ```
 
 Never run PaperPad and a comparison game simultaneously; it makes screenshots, input, audio, CPU, crash, and stability evidence ambiguous.
+
+## Physical iPhone or iPad development build
+
+After the private AOT generation and RT64 host-tool build have completed, configure an Xcode device build with your own Apple development team:
+
+```sh
+export PAPERPAD_APPLE_TEAM_ID="YOUR_TEAM_ID"
+cmake -S . -B build-ios-device -G Xcode \
+  -DCMAKE_SYSTEM_NAME=iOS \
+  -DCMAKE_OSX_SYSROOT=iphoneos \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DDEVELOPMENT_TEAM="$PAPERPAD_APPLE_TEAM_ID"
+cmake --build build-ios-device --config Release --target PaperPad -- \
+  -sdk iphoneos CODE_SIGN_STYLE=Automatic \
+  DEVELOPMENT_TEAM="$PAPERPAD_APPLE_TEAM_ID" \
+  'CODE_SIGN_IDENTITY=Apple Development'
+```
+
+Verify that the selected provisioning profile includes the target device, inspect the bundle and entitlements, and confirm the app is ROM-free before installing it. Keep signing identities and profiles local; never commit them.
+
+```sh
+xcrun devicectl list devices
+xcrun devicectl device install app --device DEVICE_ID \
+  build-ios-device/Release/PaperPad.app
+xcrun devicectl device process launch --device DEVICE_ID \
+  com.chrissotraidis.paperpad
+```
+
+Install in place. Do not uninstall the app or replace its data container when updating a device that already has private game data, saves, or preferences. Back up and verify those containers before any operation that could replace them. A successful build, install, launch command, or PID does not by itself establish gameplay, visual, audio, lifecycle, thermal, or long-session acceptance.
 
 ## Source and patch verification
 
@@ -97,7 +129,7 @@ bash -n scripts/*.sh
 python3 -m py_compile scripts/generate-n64recomp-config.py
 ```
 
-Then follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). A Simulator result does not establish physical-device readiness.
+Then follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). A Simulator result does not establish physical-device readiness, and a physical-device PID alone does not establish gameplay readiness.
 
 ## Troubleshooting
 

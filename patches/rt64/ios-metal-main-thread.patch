@@ -1,0 +1,71 @@
+diff --git a/lib/rt64/src/metal/rt64_metal.cpp b/lib/rt64/src/metal/rt64_metal.cpp
+--- a/lib/rt64/src/metal/rt64_metal.cpp
++++ b/lib/rt64/src/metal/rt64_metal.cpp
+@@ -11,6 +11,10 @@
+ #include <algorithm>
+ #include <xxHash/xxh3.h>
+ #include <mutex>
++#if TARGET_OS_IPHONE
++#include <dispatch/dispatch.h>
++#include <pthread.h>
++#endif
+ 
+ #include "rt64_metal.h"
+ 
+@@ -30,6 +34,23 @@ namespace RT64 {
+ 
+     MTL::PixelFormat mapPixelFormat(RT64::RenderFormat format);
+ 
++#if TARGET_OS_IPHONE
++    struct MetalLayerDisplaySyncState {
++        CA::MetalLayer *layer;
++        bool enabled;
++    };
++
++    static void setMetalLayerDisplaySync(void *opaqueState) {
++        auto *state = static_cast<MetalLayerDisplaySyncState *>(opaqueState);
++        state->layer->setDisplaySyncEnabled(state->enabled);
++    }
++
++    static void readMetalLayerDisplaySync(void *opaqueState) {
++        auto *state = static_cast<MetalLayerDisplaySyncState *>(opaqueState);
++        state->enabled = state->layer->displaySyncEnabled();
++    }
++#endif
++
+     // MARK: - Helpers
+ 
+     constexpr uint64_t alignUp(uint64_t n, uint64_t alignment = 16) {
+@@ -1701,11 +1722,32 @@ namespace RT64 {
+     }
+ 
+     void MetalSwapChain::setVsyncEnabled(const bool vsyncEnabled) {
++#if TARGET_OS_IPHONE
++        MetalLayerDisplaySyncState state{ layer, vsyncEnabled };
++        if (pthread_main_np() != 0) {
++            setMetalLayerDisplaySync(&state);
++        }
++        else {
++            dispatch_sync_f(dispatch_get_main_queue(), &state, setMetalLayerDisplaySync);
++        }
++#else
+         layer->setDisplaySyncEnabled(vsyncEnabled);
++#endif
+     }
+ 
+     bool MetalSwapChain::isVsyncEnabled() const {
++#if TARGET_OS_IPHONE
++        MetalLayerDisplaySyncState state{ layer, true };
++        if (pthread_main_np() != 0) {
++            readMetalLayerDisplaySync(&state);
++        }
++        else {
++            dispatch_sync_f(dispatch_get_main_queue(), &state, readMetalLayerDisplaySync);
++        }
++        return state.enabled;
++#else
+         return layer->displaySyncEnabled();
++#endif
+     }
+ 
+     uint32_t MetalSwapChain::getWidth() const {

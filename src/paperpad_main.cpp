@@ -502,7 +502,10 @@ namespace {
 
         uint32_t discard_bytes = output_channels * discarded_output_frames * sizeof(float);
         uint32_t queue_bytes = audio_convert.len_cvt > discard_bytes ? audio_convert.len_cvt - discard_bytes : 0;
-        float* samples_to_queue = swap_buffer.data() + (output_channels * discarded_output_frames / 2);
+        // SDL_AudioCVT reports bytes, while this pointer is measured in float
+        // samples. Skip every prepended overlap frame (all output channels),
+        // matching the bytes removed from queue_bytes below.
+        float* samples_to_queue = swap_buffer.data() + (output_channels * discarded_output_frames);
 
         uint32_t skip_factor = static_cast<uint32_t>(queued_input_us / 100000);
         if (skip_factor != 0 && queue_bytes >= output_channels * sizeof(float)) {
@@ -778,15 +781,29 @@ extern "C" void PaperPad_SetAudioVolume(float volume) {
 }
 
 // Graphics settings from the iOS settings sheet.
-//   resolution_mode: 0 = Auto (scale to window), 1 = 2x fixed
+//   resolution_mode: 0 = Auto (scale to window), 1..4 = fixed multiplier
 //   aspect_mode:     0 = Original (4:3 letterbox), 1 = Expand (fill window)
 // Persisted by the shell; applied here via the runtime's graphics config.
 extern "C" void PaperPad_SetGraphicsConfig(int resolution_mode, int aspect_mode) {
     graphics_settings_applied.store(true, std::memory_order_relaxed);
     auto config = ultramodern::renderer::get_graphics_config();
-    config.res_option = resolution_mode == 1
-        ? ultramodern::renderer::Resolution::Original2x
-        : ultramodern::renderer::Resolution::Auto;
+    const int fixed_scale = std::clamp(resolution_mode, 0, 4);
+    config.resolution_multiplier = fixed_scale > 0 ? fixed_scale : 2.0;
+    switch (fixed_scale) {
+        case 1:
+            config.res_option = ultramodern::renderer::Resolution::Original;
+            break;
+        case 2:
+            config.res_option = ultramodern::renderer::Resolution::Original2x;
+            break;
+        case 3:
+        case 4:
+            config.res_option = ultramodern::renderer::Resolution::Manual;
+            break;
+        default:
+            config.res_option = ultramodern::renderer::Resolution::Auto;
+            break;
+    }
     config.ar_option = aspect_mode == 1
         ? ultramodern::renderer::AspectRatio::Expand
         : ultramodern::renderer::AspectRatio::Original;

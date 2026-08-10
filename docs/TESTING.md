@@ -3,7 +3,64 @@
 This is a chronological engineering record. Older failure rows describe the
 binary and source state at their timestamp; they are not current release
 claims. `docs/STATUS.md` is authoritative for the latest acceptance boundary.
-Dates use America/Chicago local time.
+Historical dates use America/Chicago local time. The 2026-08-10 acceptance run
+was performed in Europe/Budapest; report timestamps embedded by the diagnostics
+file are UTC.
+
+## 2026-08-10 physical iPad development startup
+
+| Gate | Evidence | Result |
+|---|---|---|
+| Sequential scope | Every Simulator was shut down before the physical-device build and remained shut down; no keyboard or automated gameplay input was sent | Passed |
+| Build provenance | Final release arm64 executable SHA-256 `44607a39552c12692296dbcf1f54c98d1166216b1e8b466df4b19665d978ae52`; bundle 0.1.0 (1), iPhone+iPad families, minimum iOS 15.0; no ROM-format file in the final app | Passed |
+| Signing | Xcode automatic development signing used an Apple Development identity and an iPad-inclusive provisioning profile; embedded application identifier and team entitlements matched the bundle | Passed on-device; the host's strict certificate-chain check reported `CSSMERR_TP_NOT_TRUSTED`, while iPadOS accepted the signed installation |
+| Device | iPad Pro 12.9-inch (6th generation), iPadOS 26.5.2, wired and paired with Developer Mode enabled | Passed install target check |
+| Private ROM seed | The local `.v64` normalized to SHA-1 `3837f44cda784b466c9a2d99df70d77c322b97a0`; repeated CoreDevice app-container copies timed out, so a one-time private seed build invoked PaperPad's own validator/importer, then the seed code/resource was removed and the clean ROM-free build was rebuilt and installed over the preserved container | Passed; PaperPad logged `ROM import accepted: Paper Mario US 1.0`; no ROM entered Git or the final `.app` |
+| Device-only failure/fix | Initial ROM-backed launch aborted because RT64 attempted `create_directories` at the read-only app-container-root `.rt64`; PaperPad now supplies `Application Support/PaperPad/RT64` as RT64's explicit data path | Passed clean rebuild and relaunch; the permission exception did not recur |
+| Final startup | The clean ROM-free build launched against the private ROM, reported a native 2732×2048 Metal drawable, initialized the recomp heap, installed the game-loop hook, and remained running through the observation window | Passed host-observable engine startup; console detachment requested SDL quit and produced exit code 0 |
+
+This is intentionally not recorded as a physical-device gameplay or visual
+pass. The native document picker was not used, and no UI, touch, audible audio,
+lifecycle, controller, thermal, or long-session behavior was driven or accepted
+in this check.
+
+## 2026-08-10 iPad File 1A stability follow-up
+
+| Gate | Evidence | Result |
+|---|---|---|
+| Build provenance | Release executable SHA-256 `fef7f0188caa4ce448a7d4aaa7b84c6dce94c02e47c46b693b69c1923caf924a`; ROM-free app; existing private ROM/save/preferences preserved byte-for-byte across installs | Passed on iPad Simulator only |
+| Sequential scope | Only iPad Pro 11-inch (M5), iPadOS 26.5 was booted; visible Start/A/stick used; no keyboard input | Passed |
+| Reported route | 4x launch → title → File 1A → “Mail call!” → Mario's House interior | Passed; sampled transitions showed no stale/half-built frame and the process remained alive |
+| Memory regression | Before: RSS about 744 MiB at 32 s, 1.61 GiB at 79 s, 7.67 GiB at 6:58, 8.77 GiB at 8:14. Final: 124.0→124.6 MiB physical and exactly 255 VM allocation regions across 45 idle seconds; 127.1 MiB/255 regions at 3:19 after another scene transition | Passed the exercised stability window; runaway Metal serializer retention removed |
+| Audio path | Fixed PCM overlap pointer from half of the discarded float-frame count to the full channel × frame count; final log had no CoreAudio overload/skipped-cycle message | Structural and runtime-log checks passed; audible human acceptance remains open |
+| Layer/threading | iOS `CAMetalLayer` display-sync access marshalled to the main thread | Final log had no off-main-layer warning |
+| Crash review | One rejected experimental broad workload pool produced PaperPad/SimMetalHost reports at 21:11 and was removed. Retained build produced no later report or fatal/current-session line | Passed retained build; failed experiment documented, not shipped |
+
+This follow-up supersedes the earlier iPad stability conclusion for the current
+working tree. It does not roll forward to iPhone Simulator or physical-device
+audio acceptance.
+
+## 2026-08-10 iPhone/iPad release-candidate audit
+
+| Gate | Evidence | Result |
+|---|---|---|
+| Build provenance | `main` base `30a28a9e160ffbebee7a191f2ade5da632528900` plus the reviewed working-tree changes; release executable SHA-256 `e2f90aa4c236665e53355dd42c5b181c7c5b78d7183becd0d6414148ea1e4db7` | Passed; one arm64 ROM-free `build-ios-simulator/Release/PaperPad.app` was installed on both targets |
+| Sequential order | iPad Pro 11-inch (M5) was terminated and shut down before iPhone 17 Pro boot; final `simctl list devices` contained no `Booted` device | Passed; never more than one Simulator was booted |
+| iPad route | iPad Pro 11-inch (M5), iPadOS 26.5; about 12 minutes; clean first-run screen, ignored normalized ROM seed, logos/title/story, file creation, save selection, Mario's House prologue, menu/settings/share; Start/A used the on-screen controls while file-name direction used Simulator keyboard input | Passed exercised route; no crop, quarter-size viewport, flashing, missing layer, or touch-layout collision observed; captures `15`–`18` under `docs/release-audit/` |
+| iPhone route | iPhone 17 Pro, iOS 26.5; about 5 minutes; clean first-run screen, ignored normalized ROM seed, logos/title and file entry using on-screen Start/A, menu/settings/share | Passed exercised route; centered top menu and compact controls remained inside safe areas; captures `19`–`20` under `docs/release-audit/` |
+| Resolution selection | Auto, 1x, 2x, 3x, and 4x selected by touch on both device classes | Passed UI selection; this row alone is not renderer proof |
+| Renderer scale | Both current-session logs recorded Original at 1x, Manual multipliers 2.00/3.00/4.00, WindowIntegerScale for Auto, and `discard=1` for each live transition | Passed renderer confirmation, including the 3x↔4x framebuffer invalidation path |
+| Persistence | iPad was left on 4x, terminated, relaunched, and Settings visibly reopened with 4x selected; the generated report also stated `Resolution: 4x` | Passed for the exercised iPad route; iPhone ended on Automatic and was not separately relaunched for persistence |
+| Diagnostics | `PaperPad-Diagnostics.txt` appeared in the system share sheet on both targets; metadata, ROM-present yes/no boundary, privacy note, and current-session tail were inspected | Passed; reports were approximately 3 KiB in these sessions and no share destination was selected |
+| Modal touch suppression | Opening menu/settings/share cleared and hid gameplay targets, including the persistent menu button; dismissal restored them according to the enabled Touch Controls setting | Passed by visual and accessibility inspection on both targets |
+| Crash/warning review | No new `PaperPad*` DiagnosticReports were created after 18:45 local; current-session logs contained no fatal/assert/crash line | Passed the exercised routes; known non-blocking unbalanced UIKit appearance, duplicate Simulator accessibility-class, `RenderPool`, and `IOSurfaceClientSetSurfaceNotify` diagnostics remain open |
+
+The iPad gameplay route used a directly seeded ignored normalized ROM after the
+native clean first-run screen was inspected. The iPhone did the same. This run
+therefore confirms the first-run UI and private runtime path, not a fresh
+document-picker import. Import and invalid-file behavior retain the prior audit
+evidence and remain explicit release-checklist items for future final artifacts.
+The full command/process record is in [VALIDATION-2026-08-10.md](VALIDATION-2026-08-10.md).
 
 ## 2026-08-09 release audit
 

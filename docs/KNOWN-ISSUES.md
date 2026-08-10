@@ -2,7 +2,7 @@
 
 The detailed entries below preserve the 2026-08-05 through 2026-08-06 failure
 investigations and fixes. They are historical evidence, not the current release
-status. See `docs/STATUS.md` for the 2026-08-09 acceptance boundary and open
+status. See `docs/STATUS.md` for the 2026-08-10 acceptance boundary and open
 gates. Entries marked fixed are expected to remain covered by the pinned ReCut
 snapshot or the maintained patch series.
 
@@ -238,7 +238,12 @@ snapshot or the maintained patch series.
    1.000`). Fix (commit `557d376`): default the graphics config to
    `Resolution::Auto` (WindowIntegerScale) unless the iOS settings sheet has a
    saved preference; the render now runs at 7x (2240x1680) with steady 60fps.
-   The settings sheet offers Auto/2x resolution and Original/Expand aspect.
+   The settings sheet originally offered Auto/2x resolution and now offers
+   Auto plus fixed 1x/2x/3x/4x choices; Original/Expand aspect remains
+   separate. The 2026-08-10 final iPad and iPhone Simulator passes exercised
+   every scale by touch, confirmed the renderer mode/multiplier in the private
+   session log, and observed no new visual defect on the opening routes. Longer
+   gameplay and physical-device scale acceptance remain open.
 
 5. **Screen flashed full/partial frames during 30fps cutscenes (FIXED
    2026-08-06, final fix)** — the visible image alternated between the
@@ -290,6 +295,41 @@ snapshot or the maintained patch series.
    creation → Mario's House gameplay without crashing (previously crashed
    37s after launch, every time). The crash log is
    `~/Library/Logs/DiagnosticReports/PaperPad-2026-08-06-073051.ips`.
+
+7. **File 1A transition shudder and SimMetalHost crash under runaway memory
+   pressure (FIXED 2026-08-10)** — the reported 4x iPad Simulator run grew
+   from roughly 744 MiB RSS at 32 seconds to 8.77 GiB at 8:14, destabilized
+   ScreenCaptureKit/CoreSimulator, and ended with Metal termination namespace
+   102 after SimMetalHost disappeared. A 1x comparison had nearly the same
+   slope, so resolution size was not the primary leak. Metal-cpp convenience
+   methods returned autoreleased serializer wrappers on long-lived RT64 and
+   N64ModernRuntime threads whose outer pools drained only at shutdown.
+
+   The retained fix drains display-list and screen-update callbacks, presents,
+   fence-completed idle work, and fully synchronized texture-upload batches.
+   A broader workload pool was explicitly rejected after it reproduced a
+   SimMetalHost deserializer resource-map crash. On the retained build, File 1A
+   reached “Mail call!” and Mario's House at 4x; physical footprint held
+   124.0→124.6 MiB and VM allocation regions remained exactly 255 across a
+   45-second idle comparison, then remained 255 after the house transition.
+   Sampled transition frames showed the intended black/fade/scene sequence,
+   not a stale or half-built framebuffer.
+
+8. **Music played with severe block-boundary clipping (FIXED IN CODE
+   2026-08-10; audible acceptance open)** — the SDL queue overlap path removed
+   four frames from its byte count but advanced the float pointer by only two
+   frames. Every block therefore began at the wrong sample position. The
+   pointer now advances by `output_channels * discarded_output_frames`, matching
+   the byte calculation. The final 4x current-session log contained no CoreAudio
+   overload or skipped-cycle message. Simulator/runtime evidence cannot prove
+   subjective audible quality; user and physical-device listening remain open.
+
+9. **`CAMetalLayer` display-sync property changed off the main thread (FIXED
+   2026-08-10)** — the clean reproduced launch logged UIKit's off-main-layer
+   mutation assertion from RT64 setup. iOS `setVsyncEnabled` and
+   `isVsyncEnabled` now marshal the layer access synchronously to the main
+   queue when called from a renderer thread. The final log did not reproduce
+   the warning.
 
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG

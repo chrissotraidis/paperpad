@@ -25,8 +25,10 @@ Use this checklist for a public source update and again before any macOS or iPho
 1. Build with `scripts/build-ios-simulator.sh`; verify `build-ios-simulator/Release/PaperPad.app` contains no ROM.
 2. Run one Simulator/app at a time. Fully terminate and shut down a target before starting a comparison app or macOS runner.
 3. On both an iPhone and iPad Simulator, exercise first-run import, invalid-file rejection, title/file flow, early gameplay, every touch control, simultaneous touches, settings persistence, touch editor/reset, ROM manager, portrait/landscape recovery, background/foreground, and clean terminate.
-4. Inspect accessibility labels/values for setup, persistent menu, settings, switches, sliders, alerts, and ROM flow. Record gameplay-overlay limitations honestly.
-5. Run a long soak and inspect console and crash reports.
+4. Select Auto, 1x, 2x, 3x, and 4x separately; confirm the renderer scale, live framebuffer rebuild, and relaunch persistence rather than recording UI selection alone.
+5. Verify menu/settings presentation clears held input and suppresses gameplay touch targets, then restores them according to the saved Touch Controls switch. Generate `PaperPad-Diagnostics.txt`, inspect its metadata/log boundary and path replacement, and cancel the system share sheet without sending it.
+6. Inspect accessibility labels/values for setup, persistent menu, settings, switches, sliders, alerts, and ROM flow. Record gameplay-overlay limitations honestly.
+7. Run a long soak and inspect console and crash reports.
 
 ## Physical iPhone and iPad
 

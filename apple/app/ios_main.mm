@@ -12,6 +12,7 @@
 #import <UIKit/UIKit.h>
 
 #include "rom_setup.h"
+#include "diagnostics.h"
 #include "touch_tap_latch.h"
 #include "paperpad_input.h"
 
@@ -109,24 +110,38 @@ NSString* settingsDefaultsKey() {
     return @"paperpad.settings.v1";
 }
 
+NSInteger resolutionModeFromSettings(NSDictionary* settings) {
+    NSInteger resolution = settings[@"resolution"] == nil
+        ? 0 : [settings[@"resolution"] integerValue];
+    // Version 1 exposed only Auto (0) and 2x (1). Preserve that preference
+    // after adding explicit 1x-4x choices.
+    if ([settings[@"schemaVersion"] integerValue] < 2 && resolution == 1) {
+        resolution = 2;
+    }
+    return MAX(0, MIN(4, resolution));
+}
+
 } // namespace
 
 @interface PaperPadTouchOverlayView : UIView
 - (void)beginEditingLayout;
 - (void)resetLayout;
 - (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity;
+- (void)setModalControlsHidden:(BOOL)hidden;
 @end
 
 @implementation PaperPadTouchOverlayView {
     std::array<TouchControl, kControlCount> _controls;
     std::array<TouchControl, kControlCount> _undoControls;
     std::unordered_map<UITouch*, int> _touchRoles;
+    std::unordered_map<UITouch*, CGPoint> _touchOffsets;
     CGPoint _stickOrigin;
     CGPoint _stickKnob;
     BOOL _editing;
     BOOL _hasUndo;
     NSInteger _selected;
     BOOL _gameplayControlsEnabled;
+    BOOL _modalControlsHidden;
     CGFloat _globalOpacity;
     UIButton* _utilityButton;
 }
@@ -286,8 +301,13 @@ NSString* settingsDefaultsKey() {
 
 - (CGRect)utilityButtonRect {
     CGRect usable = [self usableBounds];
-    // Top-right, clear of the D-pad and face buttons (standard mobile-game
-    // menu position).
+    if (UIDevice.currentDevice.userInterfaceIdiom != UIUserInterfaceIdiomPad) {
+        // Match the reference compact layout: keep the persistent menu in a
+        // dedicated top-center phone slot, away from the right-side cluster.
+        return CGRectMake(CGRectGetMidX(usable) - 22.0,
+                          CGRectGetMinY(usable) + 4.0, 44.0, 44.0);
+    }
+    // Tablet layout keeps the standard top-right menu position.
     return CGRectMake(CGRectGetMaxX(usable) - 48.0,
                       CGRectGetMinY(usable) + 4.0, 44.0, 44.0);
 }
@@ -321,7 +341,7 @@ NSString* settingsDefaultsKey() {
 
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
         const TouchControl& control = _controls[index];
-        if (!_editing && !_gameplayControlsEnabled) continue;
+        if (!_editing && (!_gameplayControlsEnabled || _modalControlsHidden)) continue;
         if (!control.visible && !_editing) continue;
         CGPoint center = [self centerForControl:control];
         CGFloat radius = [self radiusForControl:control];
@@ -329,8 +349,9 @@ NSString* settingsDefaultsKey() {
         UIBezierPath* controlPath = [self isShoulderControl:control]
             ? [UIBezierPath bezierPathWithRoundedRect:controlFrame cornerRadius:radius]
             : [UIBezierPath bezierPathWithOvalInRect:controlFrame];
-        CGFloat alpha = MIN(1.0, (control.visible ? control.opacity : 0.16) *
-                                  (_globalOpacity / 0.70));
+        CGFloat alpha = _editing
+            ? (control.visible ? 0.82 : 0.26)
+            : MIN(1.0, control.opacity * (_globalOpacity / 0.70));
         BOOL pressed = NO;
         for (const auto& item : _touchRoles) {
             if (item.second == index) {
@@ -403,7 +424,7 @@ NSString* settingsDefaultsKey() {
 }
 
 - (NSInteger)controlAtPoint:(CGPoint)point includeHidden:(BOOL)includeHidden {
-    if (!_editing && !_gameplayControlsEnabled) return NSNotFound;
+    if (!_editing && (!_gameplayControlsEnabled || _modalControlsHidden)) return NSNotFound;
     NSInteger nearest = NSNotFound;
     CGFloat nearestDistance = CGFLOAT_MAX;
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
@@ -425,11 +446,15 @@ NSString* settingsDefaultsKey() {
 
 - (void)presentUtilityMenu {
     [self clearInput];
+    [self setModalControlsHidden:YES];
     UIViewController* presenter = self.window.rootViewController;
     while (presenter.presentedViewController != nil) {
         presenter = presenter.presentedViewController;
     }
-    if (presenter == nil) return;
+    if (presenter == nil) {
+        [self setModalControlsHidden:NO];
+        return;
+    }
 
     UIAlertController* menu =
         [UIAlertController alertControllerWithTitle:@"PaperPad"
@@ -448,12 +473,16 @@ NSString* settingsDefaultsKey() {
             }
             if (presenter != nil) {
                 [presenter presentViewController:settings animated:YES completion:nil];
+            } else {
+                [self setModalControlsHidden:NO];
             }
         });
     }]];
     [menu addAction:[UIAlertAction actionWithTitle:@"Cancel"
                                              style:UIAlertActionStyleCancel
-                                           handler:nil]];
+                                           handler:^(__unused UIAlertAction* action) {
+        [self setModalControlsHidden:NO];
+    }]];
     UIPopoverPresentationController* popover = menu.popoverPresentationController;
     if (popover != nil) {
         popover.sourceView = self;
@@ -464,6 +493,7 @@ NSString* settingsDefaultsKey() {
 }
 
 - (void)beginEditingLayout {
+    _modalControlsHidden = NO;
     _editing = YES;
     _utilityButton.hidden = YES;
     [self clearInput];
@@ -477,6 +507,13 @@ NSString* settingsDefaultsKey() {
     _editing = NO;
     _utilityButton.hidden = NO;
     [self saveLayout];
+    [self setNeedsDisplay];
+}
+
+- (void)setModalControlsHidden:(BOOL)hidden {
+    _modalControlsHidden = hidden;
+    _utilityButton.hidden = hidden || _editing;
+    if (hidden) [self clearInput];
     [self setNeedsDisplay];
 }
 
@@ -548,6 +585,7 @@ NSString* settingsDefaultsKey() {
 - (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity {
     _gameplayControlsEnabled = enabled;
     _globalOpacity = MAX(0.20, MIN(1.0, opacity));
+    _utilityButton.alpha = MAX(0.55, _globalOpacity);
     if (!enabled) [self clearInput];
     [self setNeedsDisplay];
 }
@@ -610,6 +648,7 @@ NSString* settingsDefaultsKey() {
 
 - (void)clearInput {
     _touchRoles.clear();
+    _touchOffsets.clear();
     _stickOrigin = CGPointZero;
     _stickKnob = CGPointZero;
     g_touch_buttons.store(0, std::memory_order_relaxed);
@@ -628,7 +667,8 @@ NSString* settingsDefaultsKey() {
         if ([self handleToolbarPoint:point]) continue;
         NSInteger control = [self controlAtPoint:point includeHidden:_editing];
         BOOL usesFloatingStick = NO;
-        if (!_editing && control == NSNotFound &&
+        if (!_editing && _gameplayControlsEnabled && !_modalControlsHidden &&
+            control == NSNotFound &&
             point.x <= CGRectGetMinX([self usableBounds]) + [self usableBounds].size.width * 0.47) {
             control = 0;
             usesFloatingStick = YES;
@@ -637,7 +677,9 @@ NSString* settingsDefaultsKey() {
         _selected = control;
         _touchRoles[touch] = (int)control;
         if (_editing) {
-            [self moveSelectedToPoint:point];
+            CGPoint center = [self centerForControl:_controls[control]];
+            _touchOffsets[touch] = CGPointMake(center.x - point.x, center.y - point.y);
+            [self setNeedsDisplay];
         } else if (_controls[control].kind == ControlKind::Stick) {
             // The visible stick behaves like a conventional fixed control, so
             // tapping or dragging its edge immediately produces direction.
@@ -660,7 +702,13 @@ NSString* settingsDefaultsKey() {
             auto found = _touchRoles.find(touch);
             if (found != _touchRoles.end()) {
                 _selected = found->second;
-                [self moveSelectedToPoint:[touch locationInView:self]];
+                CGPoint point = [touch locationInView:self];
+                auto offset = _touchOffsets.find(touch);
+                if (offset != _touchOffsets.end()) {
+                    point.x += offset->second.x;
+                    point.y += offset->second.y;
+                }
+                [self moveSelectedToPoint:point];
             }
         }
     } else {
@@ -684,6 +732,7 @@ NSString* settingsDefaultsKey() {
         if (found != _touchRoles.end()) {
             _touchRoles.erase(found);
         }
+        _touchOffsets.erase(touch);
     }
     if (_editing) {
         [self saveLayout];
@@ -816,7 +865,8 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 
     // Resolution.
     [stack addArrangedSubview:[self label:@"Resolution"]];
-    _resolutionControl = [[UISegmentedControl alloc] initWithItems:@[@"Auto", @"2x"]];
+    _resolutionControl = [[UISegmentedControl alloc]
+        initWithItems:@[@"Auto", @"1x", @"2x", @"3x", @"4x"]];
     _resolutionControl.accessibilityLabel = @"Rendering Resolution";
     [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
     [_resolutionControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
@@ -863,6 +913,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     // Actions.
     [stack addArrangedSubview:[self actionButton:@"Edit Touch Layout" action:@selector(editLayoutPressed)]];
     [stack addArrangedSubview:[self actionButton:@"Reset Touch Layout" action:@selector(resetLayoutPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Share Diagnostics…" action:@selector(diagnosticsPressed)]];
     [stack addArrangedSubview:[self actionButton:@"Manage Game ROM" action:@selector(romPressed)]];
 
     UIButton* done = [self actionButton:@"Done" action:@selector(donePressed)];
@@ -895,6 +946,11 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [self refreshFromDefaults];
 }
 
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    [g_touch_overlay setModalControlsHidden:NO];
+}
+
 - (UILabel*)label:(NSString*)text {
     UILabel* label = [[UILabel alloc] init];
     label.text = text;
@@ -917,7 +973,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 - (void)refreshFromDefaults {
     NSDictionary* saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()];
     float volume = saved[@"volume"] ? [saved[@"volume"] floatValue] : 1.0f;
-    int resolution = saved[@"resolution"] ? [saved[@"resolution"] intValue] : 0;
+    NSInteger resolution = resolutionModeFromSettings(saved);
     int aspect = saved[@"aspect"] ? [saved[@"aspect"] intValue] : 0;
     BOOL touchControls = saved[@"touchControls"] == nil || [saved[@"touchControls"] boolValue];
     float touchOpacity = saved[@"touchOpacity"] ? [saved[@"touchOpacity"] floatValue] : 0.70f;
@@ -933,6 +989,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 
 - (void)persist {
     NSDictionary* saved = @{
+        @"schemaVersion": @2,
         @"volume": @(_volumeSlider.value / 100.0),
         @"resolution": @(_resolutionControl.selectedSegmentIndex),
         @"aspect": @(_aspectControl.selectedSegmentIndex),
@@ -981,6 +1038,18 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     }];
 }
 
+- (void)diagnosticsPressed {
+    UIViewController* presenter = self.presentingViewController;
+    [self dismissViewControllerAnimated:YES completion:^{
+        if (presenter != nil) {
+            [g_touch_overlay setModalControlsHidden:YES];
+            paperpad_present_diagnostics_share((__bridge void*)presenter, ^{
+                [g_touch_overlay setModalControlsHidden:NO];
+            });
+        }
+    }];
+}
+
 - (void)romPressed {
     UIViewController* presenter = self.presentingViewController;
     [self dismissViewControllerAnimated:YES completion:^{
@@ -1008,10 +1077,10 @@ extern "C" int SDL_main(int argc, char** argv) {
         NSDictionary* settings = [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()];
         if (settings != nil) {
             float volume = settings[@"volume"] ? [settings[@"volume"] floatValue] : 1.0f;
-            int resolution = settings[@"resolution"] ? [settings[@"resolution"] intValue] : 0;
+            NSInteger resolution = resolutionModeFromSettings(settings);
             int aspect = settings[@"aspect"] ? [settings[@"aspect"] intValue] : 0;
             PaperPad_SetAudioVolume(volume);
-            PaperPad_SetGraphicsConfig(resolution, aspect);
+            PaperPad_SetGraphicsConfig(static_cast<int>(resolution), aspect);
         }
 
         NSFileManager* files = [NSFileManager defaultManager];
@@ -1027,6 +1096,7 @@ extern "C" int SDL_main(int argc, char** argv) {
                          error.localizedDescription.UTF8String);
             return EXIT_FAILURE;
         }
+        paperpad_start_diagnostics_log((__bridge void*)root);
         if (!paperpad_prepare_rom_setup()) return EXIT_FAILURE;
         if (chdir(root.fileSystemRepresentation) != 0) {
             std::perror("PaperPad could not enter Application Support");
