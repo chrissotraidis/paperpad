@@ -20,8 +20,11 @@ fi
 if [[ ! -d "$decomp/.venv" ]]; then
     "$decomp_python" -m venv "$decomp/.venv"
     "$decomp/.venv/bin/pip" install -q --upgrade pip
-    "$decomp/.venv/bin/pip" install -r "$decomp/tools/configure/requirements.txt"
 fi
+# A failed package download can leave a valid but incomplete virtual
+# environment behind. Reconcile the pinned requirements on every setup run so
+# a retry repairs that partial state instead of silently skipping it.
+"$decomp/.venv/bin/pip" install -r "$decomp/tools/configure/requirements.txt"
 
 export PATH="$HOME/.cargo/bin:$PATH"
 if ! command -v pigment64 >/dev/null || ! command -v crunch64 >/dev/null; then

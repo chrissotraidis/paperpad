@@ -28,6 +28,8 @@ User-owned ROM (.z64 / .v64 / .n64)
 
 No ROM, rebuilt ROM, generated AOT source, save, or private app-container data belongs in Git or in a published package. `scripts/check-repo-safety.sh` enforces the source-tree boundary; a separate artifact audit is still required before binary distribution.
 
+On Apple platforms, PaperPad gives RT64 an explicit data directory at `Application Support/PaperPad/RT64`. This avoids RT64's desktop default of creating `.rt64` at the home/container root, which is read-only on current physical iPadOS.
+
 ## Pinned game/runtime stack
 
 - `ref/papermario` provides the US 1.0 decompilation build, exact ROM validation, and ELF metadata used for AOT generation.
@@ -44,6 +46,7 @@ All game code used by the app is ahead-of-time compiled for arm64. The Apple tar
 ## Project integration
 
 - `apple/app/ios_main.mm`: UIKit lifecycle, Metal-capable SDL window handoff, settings, accessible menu, touch overlay, safe areas, layout editing, and lifecycle callbacks.
+- `apple/app/diagnostics.mm`: bounded private stderr tee, diagnostic report generation, path replacement, and system share sheet.
 - `apple/app/rom_setup.mm`: first-run picker, byte-order normalization, SHA-1 validation, protected private storage, and ROM replacement/removal.
 - `src/paperpad_main.cpp`: runtime startup, SDL event pump, keyboard/controller mappings, touch snapshot merge, graphics settings, and shutdown.
 - `src/paper_rt64_context.cpp`: RT64 configuration, Metal rendering bridge, framebuffer/present cadence, and diagnostics.
@@ -60,13 +63,17 @@ SDL keyboard ---------+--> PaperPad input snapshot --> N64 buttons/stick
 SDL game controller --+
 ```
 
-The iPhone/iPad overlay tracks independent fingers for simultaneous input. It exposes a fixed visible analog stick with a wider floating pickup region, a D-pad, A/B/Z, C-buttons, L/R, and Start. Settings persist touch visibility/opacity and edited normalized positions separately from the game save.
+The iPhone/iPad overlay tracks independent fingers for simultaneous input. It exposes a fixed visible analog stick with a wider floating pickup region, a D-pad, A/B/Z, C-buttons, L/R, and Start. Settings persist touch visibility/opacity and edited normalized positions separately from the game save. The normalized phone/tablet layouts and modal input lifecycle adapt HarkinianPad's accepted interaction pattern to PaperPad's direct N64 input bridge. Selecting an editor control preserves its grab offset; menu/settings transitions clear held input and suppress the gameplay targets.
 
-macOS uses SDL keyboard and standard game-controller mappings. Controller hot-plug is supported by the input loop; controller-driven touch auto-hide is not implemented.
+macOS uses SDL keyboard and standard game-controller mappings. Controller hot-plug is supported by the input loop; controller-driven touch auto-hide, HarkinianPad's hold-to-latch Z gesture, and per-control VoiceOver elements for the custom-drawn gameplay overlay are not implemented.
 
 ## Rendering and window sizing
 
-RT64 renders through Metal. On iOS, the UIKit window bridge reports physical pixel dimensions using the screen scale so the swapchain and Retina drawable agree. The default uses automatic integer scaling and original 4:3 aspect framing. Users can select fixed 2x resolution or expanded aspect in the native settings sheet.
+RT64 renders through Metal. On iOS, the UIKit window bridge reports physical pixel dimensions using the screen scale so the swapchain and Retina drawable agree. The default uses automatic integer scaling and original 4:3 aspect framing. Settings map `Auto` to RT64 window-integer scaling, `1x` to original resolution, `2x` to the runtime's original-2x mode, and `3x`/`4x` to manual multipliers. Live multiplier changes rebuild framebuffer resources. Expanded aspect remains optional.
+
+## Diagnostics boundary
+
+On iPhone and iPad, stderr continues to the development console and is also captured in `Application Support/PaperPad/Logs/paperpad-latest.log`. The private log is replaced at launch, uses mode `0600`, data protection, backup exclusion, and rotates at 4 MiB. `Share Diagnostics…` reads at most the last 512 KiB and adds app/build/system/screen/settings metadata plus a ROM-present boolean. It does not read ROM or save contents. Known app-support, home, and temporary path prefixes are replaced; the result is not promised to be fully anonymized and must be reviewed before sharing.
 
 ## ROM setup and saves
 

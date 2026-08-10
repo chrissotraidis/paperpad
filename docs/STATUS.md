@@ -1,18 +1,34 @@
 # PaperPad status
 
-Updated 2026-08-09 (America/Chicago). This file distinguishes reproduced acceptance from planned work.
+Updated 2026-08-10 (Europe/Budapest). This file distinguishes reproduced acceptance from planned work.
 
 ## Current acceptance
 
 | Target | Status | Reproduced evidence |
 |---|---|---|
 | Apple Silicon macOS | **Verified local source build** | ROM-free app build/signature check; launch through intro, name/file creation, and early gameplay; keyboard input; clean test quit |
-| iPhone Simulator | **Verified local source build** | First-run UI, ROM import path, native launch/rendering, touch overlay, persistent menu/settings, and clean terminate |
-| iPad Simulator | **Verified local source build** | Retina 4:3 rendering in both orientations, title/file flow, touch-driven castle entry, settings/touch visibility/opacity/layout/ROM controls, and clean terminate |
-| Physical iPhone/iPad | **Not verified** | No device build, signing, install, audible-device-audio, interruption, thermal, or long-play evidence |
+| iPhone Simulator | **Verified earlier 2026-08-10 source build** | Clean first-run UI, title/file entry with touch Start/A, Auto plus 1x–4x renderer evidence, diagnostics share/dismissal, and clean terminate; the later iPad stability changes still require an iPhone rerun |
+| iPad Simulator | **Verified 2026-08-10 route** | Retina 4:3 File 1A/Mario's House route at 4x, stable Metal allocation counts, Auto plus 1x–4x renderer evidence, diagnostics share/dismissal, and touch-only input; the later RT64 path-only device fix rebuilt but was not relaunched in Simulator |
+| Physical iPad | **Development startup verified** | Final ROM-free arm64 0.1.0 (1) build signed/installed on iPad Pro 12.9-inch (6th generation), iPadOS 26.5.2; validated private ROM, native 2732×2048 Metal setup, recomp heap, and game-loop hook initialized |
+| Physical iPhone | **Not verified** | No current signed build, install, or on-device playtest evidence |
 | Signed/notarized/TestFlight/App Store | **Not available** | Packaging, rights clearance, signing, and distribution acceptance remain open |
 
 The tested build identifies as version 0.1.0 (build 1), profile `release`, bundle ID `com.chrissotraidis.paperpad` on iOS.
+
+## Fixes verified in the 2026-08-10 Simulator audit
+
+- The settings sheet exposes Auto, 1x, 2x, 3x, and 4x. Both device-class logs confirmed the intended RT64 mode/multiplier and framebuffer invalidation for every live change; iPad 4x also survived terminate/relaunch.
+- `Share Diagnostics…` produced a system share sheet on iPhone and iPad with app/build/system/screen/settings metadata, only a ROM-present boolean, a privacy review notice, and the bounded current-session stderr tail.
+- The private current-session log is replaced at launch, protected, excluded from backup, rotated at 4 MiB, and read from the end rather than loaded wholesale for sharing.
+- Menu, settings, and share presentation suppress gameplay input and every touch target; dismissal restores the saved Touch Controls state.
+- The phone menu is top-centered, global touch opacity includes the menu, and the layout editor preserves the finger grab offset instead of snapping a control center on selection.
+- The clean setup script now repairs an existing but incomplete pmret virtual environment by rerunning its pinned requirements install.
+- The reported File 1A crash was traced to runaway autoreleased Metal serializer wrappers across long-lived graphics/present/idle/texture threads. The retained pools drain only completed or fenced work. A broad workload pool that caused a SimMetalHost resource-map crash was rejected and removed.
+- The retained 4x iPad build held exactly 255 VM allocation regions across a 45-second idle comparison and remained at 255 after the Mario's House transition; physical footprint was about 124–127 MiB instead of multi-gigabyte growth.
+- The PCM overlap pointer now advances by the full discarded channel × frame count, removing the identified block-boundary discontinuity. The final log contained no CoreAudio overload, but audible listening acceptance remains open.
+- iOS Metal-layer display-sync access now runs on the main thread; the final log no longer reports off-main `CAMetalLayer` mutation.
+- The physical iPad exposed RT64's default attempt to create `.rt64` at the now read-only app-container root. PaperPad now gives RT64 an explicit private path under Application Support; the clean device build then completed renderer and recompiled-game initialization.
+- The initial one-iPad-then-one-iPhone audit created no PaperPad crash report. One later rejected experimental build did; the retained final build created no newer report. The known non-blocking Simulator/runtime diagnostics listed below remain visible.
 
 ## Fixes verified in the 2026-08-09 release audit
 
@@ -35,16 +51,16 @@ The tested build identifies as version 0.1.0 (build 1), profile `release`, bundl
 
 ## Playtest boundary
 
-The current hands-on route covered launch, title, file creation, the opening narrative, early map movement, dialogue, and entry into Peach's Castle. Touch A, Start, D-pad, and analog movement were exercised, including menu/settings interactions and a controls-off/on cycle. The final macOS artifact also passed three clean-quit cycles after a teardown regression was found and fixed. This is meaningful early-game acceptance, not a full-game playthrough.
+The combined hands-on evidence covers launch, title, file creation, opening narrative, early map movement, dialogue, and entry into Peach's Castle. The 2026-08-10 final iPad route reached the Mario's House prologue after creating/loading a save; the final iPhone route reached file entry with touch Start/A. Earlier acceptance exercised D-pad and analog movement. The final macOS artifact passed three clean-quit cycles on 2026-08-09. This is meaningful opening-route acceptance, not a full-game playthrough.
 
 Visual comparisons against original Paper Mario references found matching theater structure, original 4:3 composition, saturated palette, checkerboard/curtain staging, dialogue styling, and layered paper-character presentation. See `docs/release-audit/` and the README.
 
 ## Known open release gates
 
-1. Run a complete-game or chapter-spanning regression and a 60+ minute soak on the final macOS and Simulator artifacts.
-2. Confirm audible audio and interruption/background recovery on real Apple hardware.
-3. Add and audit a generic physical-device build before making any iPhone/iPad device claim.
-4. Verify controller hot-plug and decide whether touch controls should auto-hide while a hardware controller is active.
+1. Re-run the final stability changes on iPhone Simulator, then run a complete-game or chapter-spanning regression and a 60+ minute soak on both Simulator device classes.
+2. Extend the physical iPad startup check through the native document picker, hands-on visuals, touch gameplay, audible audio, interruption/background recovery, thermal review, and a long session.
+3. Build, install, and exercise the current source on a physical iPhone before making an iPhone device claim.
+4. Verify controller hot-plug, implement or explicitly decline controller-driven touch auto-hide and the reference hold-to-latch Z gesture, and add per-control VoiceOver elements to the custom gameplay overlay.
 5. Clean up the non-blocking iOS launch warnings: unbalanced UIKit appearance transition and duplicate Simulator accessibility class.
 6. Investigate the RT64 `RenderPool in Metal is not implemented currently` diagnostic and document whether the feature is unused or needs an implementation.
 7. Complete binary packaging, required third-party notices, signing/notarization, privacy, accessibility, and rights review before any public binary.

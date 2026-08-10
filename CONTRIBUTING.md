@@ -10,6 +10,8 @@ Before opening an issue, search existing reports and include:
 - steps to reproduce and the expected and actual result; and
 - relevant non-sensitive logs or screenshots.
 
+On iPhone or iPad, use **PaperPad Menu > Settings > Share Diagnostics…** to create the bounded current-session report. Review and redact it before attaching it: known container/home/temporary paths are replaced, but the report is not guaranteed to remove every private string emitted at runtime.
+
 Never attach, request, link to, or commit ROMs, extracted game assets, generated playable source or archives, saves, certificates, provisioning profiles, private keys, credentials, or private device data.
 
 For a change:

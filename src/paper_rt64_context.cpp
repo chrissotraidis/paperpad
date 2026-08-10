@@ -1,4 +1,5 @@
 #include "paper_rt64_context.h"
+#include "paperpad_paths.h"
 
 #include <algorithm>
 #include <atomic>
@@ -21,6 +22,7 @@
 #ifndef HLSL_CPU
 #define HLSL_CPU
 #endif
+#include "common/rt64_thread.h"
 #include "hle/rt64_application.h"
 #include "hle/rt64_state.h"
 
@@ -75,6 +77,8 @@ namespace {
         case ultramodern::renderer::Resolution::Original:
             return RT64::UserConfiguration::Resolution::Original;
         case ultramodern::renderer::Resolution::Original2x:
+            return RT64::UserConfiguration::Resolution::Manual;
+        case ultramodern::renderer::Resolution::Manual:
             return RT64::UserConfiguration::Resolution::Manual;
         case ultramodern::renderer::Resolution::Auto:
         default:
@@ -158,7 +162,10 @@ namespace {
 
     void apply_user_config(RT64::Application* app, const ultramodern::renderer::GraphicsConfig& config) {
         app->userConfig.resolution = to_rt64(config.res_option);
-        app->userConfig.resolutionMultiplier = config.res_option == ultramodern::renderer::Resolution::Original2x ? 2.0 : 2.0;
+        app->userConfig.resolutionMultiplier =
+            config.res_option == ultramodern::renderer::Resolution::Original2x
+            ? 2.0
+            : std::clamp(config.resolution_multiplier, 1.0, 32.0);
         app->userConfig.downsampleMultiplier = std::clamp(config.ds_option, 1, 32);
         app->userConfig.extAspectRatio = RT64::UserConfiguration::AspectRatio::Original;
         app->userConfig.aspectRatio = to_rt64(config.ar_option);
@@ -247,6 +254,16 @@ namespace {
 
             RT64::ApplicationConfiguration app_config;
             app_config.useConfigurationFile = false;
+#if defined(__APPLE__)
+            // iOS makes the app-container root read-only. Keep RT64's logs and
+            // cache beside PaperPad's other private Application Support data.
+            const char* support_dir = paperpad_apple_application_support_dir();
+            if (support_dir != nullptr) {
+                app_config.detectDataPath = false;
+                app_config.dataPath = std::filesystem::path(support_dir) / "RT64";
+                free(const_cast<char*>(support_dir));
+            }
+#endif
             auto config = ultramodern::renderer::get_graphics_config();
 
             uint32_t thread_id = 0;
@@ -287,11 +304,18 @@ namespace {
             apply_user_config(app.get(), new_config);
             const bool discard_fbs =
                 (new_config.res_option != old_config.res_option) ||
+                (new_config.resolution_multiplier != old_config.resolution_multiplier) ||
                 (new_config.ar_option != old_config.ar_option) ||
                 (new_config.msaa_option != old_config.msaa_option) ||
                 (new_config.hpfb_option != old_config.hpfb_option) ||
                 (new_config.ds_option != old_config.ds_option);
             app->updateUserConfig(discard_fbs);
+            std::fprintf(stderr,
+                "[render] config updated resolution=%d multiplier=%.2f aspect=%d discard=%d\n",
+                static_cast<int>(app->userConfig.resolution),
+                app->userConfig.resolutionMultiplier,
+                static_cast<int>(app->userConfig.aspectRatio),
+                discard_fbs ? 1 : 0);
             if (new_config.msaa_option != old_config.msaa_option) {
                 app->updateMultisampling();
             }
@@ -308,6 +332,12 @@ namespace {
         }
 
         void send_dl(const OSTask* task) override {
+#if defined(__APPLE__)
+            // Metal-cpp convenience methods return autoreleased wrappers. This callback
+            // runs repeatedly on N64ModernRuntime's long-lived graphics thread, so drain
+            // those wrappers after each completed display-list submission.
+            RT64::AppleAutoreleasePoolMarker displayListPool;
+#endif
             static const bool s_dlhash = [](){ const char* v = std::getenv("PAPERPAD_DL_HASH"); return v != nullptr && v[0] != '0'; }();
             if (s_dlhash) {
                 uint32_t ptr = task->t.data_ptr & 0x3FFFFFF;
@@ -337,6 +367,12 @@ namespace {
         }
 
         void update_screen() override {
+#if defined(__APPLE__)
+            // updateScreen is the other frame-cadence callback on the same long-lived
+            // graphics thread. Durable present data is owned by RT64's queues; drain
+            // only temporary Objective-C/Metal wrappers after the submission returns.
+            RT64::AppleAutoreleasePoolMarker screenPool;
+#endif
             app->updateScreen();
         }
 

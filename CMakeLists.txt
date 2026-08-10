@@ -125,6 +125,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(PaperPad PRIVATE
         "${PAPERPAD_IOS_DIR}/ios_main.mm"
         "${PAPERPAD_IOS_DIR}/rom_setup.mm"
+        "${PAPERPAD_IOS_DIR}/diagnostics.mm"
+        "${PAPERPAD_IOS_DIR}/diagnostics.h"
         "${PAPERPAD_IOS_DIR}/touch_tap_latch.h"
         "${PAPERPAD_IOS_DIR}/PrivacyInfo.xcprivacy"
         "${PAPERPAD_IOS_DIR}/ThirdPartyNotices.txt"

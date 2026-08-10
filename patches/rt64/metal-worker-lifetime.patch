@@ -98,6 +98,19 @@
          // Create the semaphores used by the swap chains.
          acquiredSemaphore = ext.device->createCommandSemaphore();
          drawSemaphore = ext.device->createCommandSemaphore();
+@@ -477,6 +486,12 @@
+         bool swapChainValid = !ext.swapChain->needsResize();
+         while (presentThreadRunning) {
++#if defined(__APPLE__)
++            // Metal-cpp command buffers returned by non-owning factory methods
++            // are autoreleased. Drain them every present instead of retaining
++            // the full session's serializer resources until thread shutdown.
++            AppleAutoreleasePoolMarker presentPool;
++#endif
+             {
+                 std::unique_lock<std::mutex> cursorLock(cursorMutex);
+                 cursorCondition.wait(cursorLock, [&]() {
+                     return (writeCursor != threadCursor) || !presentThreadRunning;
 --- a/lib/rt64/src/hle/rt64_present_queue.h
 +++ b/lib/rt64/src/hle/rt64_present_queue.h
 @@ -67,6 +67,7 @@
@@ -173,6 +186,18 @@
          // Beware traveler as you enter the zone of dirty driver hacks. Given N64 games are not exactly a demanding thing to render
          // nowadays for modern GPUs and due to how the plugin's cooperative multiqueue system works, it's sometimes just not possible
          // to keep the GPU busy at all times. It is often the case that the GPU might've already rendered all the frames it needed to
+@@ -1202,6 +1223,11 @@
+             }
+ 
+             if (threadsRunning) {
++#if defined(__APPLE__)
++                // This loop can submit a fenced Metal command buffer every millisecond.
++                // Do not retain its autoreleased wrappers until thread shutdown.
++                AppleAutoreleasePoolMarker idleWorkPool;
++#endif
+                 if (workerMutex.try_lock()) {
+                     commandList->begin();
+                     commandList->setPipeline(idle.pipeline.get());
 --- a/lib/rt64/src/hle/rt64_workload_queue.h
 +++ b/lib/rt64/src/hle/rt64_workload_queue.h
 @@ -107,6 +107,7 @@
@@ -304,3 +329,16 @@
  
          uploadThreadRunning = true;
  
+@@ -1038,6 +1044,12 @@
+             }
+
+             if (!queueCopy.empty() || !resolvedPathQueueCopy.empty() || !afterDecodeBarriers.empty()) {
++#if defined(__APPLE__)
++                // The upload path chains its copy queue into the direct queue and waits
++                // for the direct fence before this iteration ends. Drain temporary
++                // Metal-cpp wrappers only after that fully synchronized batch.
++                AppleAutoreleasePoolMarker uploadBatchPool;
++#endif
+                 // Create new upload buffers and descriptor heaps to fill out the required size.
+                 const size_t queueSize = queueCopy.size();
+                 const uint64_t TMEMSize = 0x1000;
