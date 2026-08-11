@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include <SDL.h>
+#include <TargetConditionals.h>
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
@@ -28,6 +29,7 @@ extern "C" int paperpad_recomp_main(int argc, char** argv);
 namespace {
 
 std::atomic<uint16_t> g_touch_buttons{0};
+std::atomic_bool g_physical_controller_connected{false};
 static PaperPadTouchOverlayView* g_touch_overlay = nullptr;
 PaperPadTouchTapLatch g_touch_taps;
 std::atomic<int32_t> g_touch_x{0};
@@ -37,7 +39,10 @@ std::atomic<int32_t> g_touch_flick_y{0};
 std::atomic<uint8_t> g_touch_flick_polls{0};
 
 constexpr uint8_t kTapHoldPolls = 6;
-constexpr uint8_t kAnalogFlickHoldPolls = 6;
+// Preserve a very short released flick for one runtime poll. Replaying it for
+// several polls makes grid/name-entry selectors overshoot after the thumb has
+// already returned to neutral.
+constexpr uint8_t kAnalogFlickHoldPolls = 1;
 
 enum class ControlKind { Stick, Button };
 
@@ -87,23 +92,26 @@ std::array<TouchControl, kControlCount> defaultControls() {
         {"d_down", "\u2193", ControlKind::Button, 0x0400, 0.131, 0.502, 0.056, 0.38, true},
         {"d_left", "\u2190", ControlKind::Button, 0x0200, 0.080, 0.434, 0.056, 0.38, true},
         {"d_right", "\u2192", ControlKind::Button, 0x0100, 0.182, 0.434, 0.056, 0.38, true},
-        {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.914, 0.340, 0.051, 0.52, true},
-        {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.914, 0.500, 0.051, 0.52, true},
-        {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.871, 0.420, 0.051, 0.52, true},
-        {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.957, 0.420, 0.051, 0.52, true},
-        {"a", "A", ControlKind::Button, 0x8000, 0.925, 0.780, 0.066, 0.58, true},
-        {"b", "B", ControlKind::Button, 0x4000, 0.835, 0.700, 0.066, 0.58, true},
-        {"z", "Z", ControlKind::Button, 0x2000, 0.920, 0.625, 0.066, 0.40, true},
+        // Keep every right-hand target physically separate. Shoulder buttons
+        // are wider than their nominal radius, so their vertical spacing must
+        // also leave room for the C cluster below them.
+        {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.914, 0.410, 0.051, 0.52, true},
+        {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.914, 0.660, 0.051, 0.52, true},
+        {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.871, 0.535, 0.051, 0.52, true},
+        {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.957, 0.535, 0.051, 0.52, true},
+        {"a", "A", ControlKind::Button, 0x8000, 0.925, 0.820, 0.066, 0.58, true},
+        {"b", "B", ControlKind::Button, 0x4000, 0.835, 0.790, 0.066, 0.58, true},
+        {"z", "Z", ControlKind::Button, 0x2000, 0.820, 0.630, 0.066, 0.40, true},
         {"l", "L", ControlKind::Button, 0x0020, 0.940, 0.270, 0.050, 0.36, true},
-        {"r", "R", ControlKind::Button, 0x0010, 0.940, 0.170, 0.050, 0.36, true},
-        {"start", "START", ControlKind::Button, 0x1000, 0.850, 0.170, 0.050, 0.54, true},
+        {"r", "R", ControlKind::Button, 0x0010, 0.940, 0.145, 0.050, 0.36, true},
+        {"start", "START", ControlKind::Button, 0x1000, 0.835, 0.150, 0.050, 0.54, true},
     }};
 }
 
 NSString* layoutDefaultsKey() {
     return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
         ? @"paperpad.touch.layout.ipad.v3"
-        : @"paperpad.touch.layout.iphone.v5";
+        : @"paperpad.touch.layout.iphone.v6";
 }
 
 NSString* settingsDefaultsKey() {
@@ -127,6 +135,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 - (void)beginEditingLayout;
 - (void)resetLayout;
 - (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity;
+- (void)setPhysicalControllerConnected:(BOOL)connected;
 - (void)setModalControlsHidden:(BOOL)hidden;
 @end
 
@@ -141,6 +150,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     BOOL _hasUndo;
     NSInteger _selected;
     BOOL _gameplayControlsEnabled;
+    BOOL _physicalControllerConnected;
     BOOL _modalControlsHidden;
     CGFloat _globalOpacity;
     UIButton* _utilityButton;
@@ -341,7 +351,8 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
         const TouchControl& control = _controls[index];
-        if (!_editing && (!_gameplayControlsEnabled || _modalControlsHidden)) continue;
+        if (!_editing && (!_gameplayControlsEnabled || _physicalControllerConnected ||
+                          _modalControlsHidden)) continue;
         if (!control.visible && !_editing) continue;
         CGPoint center = [self centerForControl:control];
         CGFloat radius = [self radiusForControl:control];
@@ -424,7 +435,8 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 }
 
 - (NSInteger)controlAtPoint:(CGPoint)point includeHidden:(BOOL)includeHidden {
-    if (!_editing && (!_gameplayControlsEnabled || _modalControlsHidden)) return NSNotFound;
+    if (!_editing && (!_gameplayControlsEnabled || _physicalControllerConnected ||
+                      _modalControlsHidden)) return NSNotFound;
     NSInteger nearest = NSNotFound;
     CGFloat nearestDistance = CGFLOAT_MAX;
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
@@ -473,6 +485,24 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             }
             if (presenter != nil) {
                 [presenter presentViewController:settings animated:YES completion:nil];
+            } else {
+                [self setModalControlsHidden:NO];
+            }
+        });
+    }]];
+    [menu addAction:[UIAlertAction actionWithTitle:@"Share Diagnostics & Logs…"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(__unused UIAlertAction* action) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            UIViewController* presenter = self.window.rootViewController;
+            while (presenter.presentedViewController != nil) {
+                presenter = presenter.presentedViewController;
+            }
+            if (presenter != nil) {
+                paperpad_present_diagnostics_share((__bridge void*)presenter, ^{
+                    [self setModalControlsHidden:NO];
+                });
             } else {
                 [self setModalControlsHidden:NO];
             }
@@ -590,6 +620,12 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     [self setNeedsDisplay];
 }
 
+- (void)setPhysicalControllerConnected:(BOOL)connected {
+    _physicalControllerConnected = connected;
+    if (connected) [self clearInput];
+    [self setNeedsDisplay];
+}
+
 - (void)moveSelectedToPoint:(CGPoint)point {
     if (_selected == NSNotFound) return;
     CGRect usable = [self usableBounds];
@@ -628,9 +664,23 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
                 y = 0.0;
             } else {
                 const CGFloat remappedLength = (normalizedLength - deadzone) / (1.0 - deadzone);
-                const CGFloat scale = remappedLength / normalizedLength;
+                // Give the center of the stick a wider precision range without
+                // taking away full-speed movement at the edge. This makes
+                // name-entry and other grid selectors less eager to repeat.
+                const CGFloat responseLength = remappedLength * remappedLength;
+                const CGFloat scale = responseLength / normalizedLength;
                 x *= scale;
                 y *= scale;
+
+                // Bias clearly dominant gestures to a cardinal direction.
+                // Deliberate diagonals remain available when the two axes are
+                // close, while small thumb drift no longer changes rows/columns.
+                constexpr CGFloat cardinalBias = 1.45;
+                if (std::abs(x) > std::abs(y) * cardinalBias) {
+                    y = 0.0;
+                } else if (std::abs(y) > std::abs(x) * cardinalBias) {
+                    x = 0.0;
+                }
                 g_touch_flick_x.store((int32_t)std::lround(x * 10000.0), std::memory_order_relaxed);
                 g_touch_flick_y.store((int32_t)std::lround(y * 10000.0), std::memory_order_relaxed);
                 g_touch_flick_polls.store(kAnalogFlickHoldPolls, std::memory_order_relaxed);
@@ -666,12 +716,11 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         CGPoint point = [touch locationInView:self];
         if ([self handleToolbarPoint:point]) continue;
         NSInteger control = [self controlAtPoint:point includeHidden:_editing];
-        BOOL usesFloatingStick = NO;
-        if (!_editing && _gameplayControlsEnabled && !_modalControlsHidden &&
+        if (!_editing && _gameplayControlsEnabled && !_physicalControllerConnected &&
+            !_modalControlsHidden &&
             control == NSNotFound &&
             point.x <= CGRectGetMinX([self usableBounds]) + [self usableBounds].size.width * 0.47) {
             control = 0;
-            usesFloatingStick = YES;
         }
         if (control == NSNotFound) continue;
         _selected = control;
@@ -681,12 +730,11 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             _touchOffsets[touch] = CGPointMake(center.x - point.x, center.y - point.y);
             [self setNeedsDisplay];
         } else if (_controls[control].kind == ControlKind::Stick) {
-            // The visible stick behaves like a conventional fixed control, so
-            // tapping or dragging its edge immediately produces direction.
-            // The broader left-side fallback remains a floating stick whose
-            // origin follows the first contact.
-            _stickOrigin = usesFloatingStick ? point : [self centerForControl:_controls[control]];
-            _stickKnob = point;
+            // The broad left-side pickup region targets the same fixed visible
+            // stick. Keeping one origin guarantees that both the rendered knob
+            // and the N64 value use the identical clamped vector.
+            _stickOrigin = [self centerForControl:_controls[control]];
+            _stickKnob = _stickOrigin;
         } else {
             // Preserve quick taps across several runtime polls without turning
             // a single shoulder tap into a long press.
@@ -768,6 +816,8 @@ extern "C" void paperpad_touch_attach(void* window_pointer) {
         CGFloat controlsOpacity = settings[@"touchOpacity"] == nil
             ? 0.70 : [settings[@"touchOpacity"] doubleValue];
         [overlay setGameplayControlsEnabled:controlsEnabled opacity:controlsOpacity];
+        [overlay setPhysicalControllerConnected:
+            g_physical_controller_connected.load(std::memory_order_relaxed)];
         g_touch_overlay = overlay;
         overlay.translatesAutoresizingMaskIntoConstraints = NO;
         [host addSubview:overlay];
@@ -777,6 +827,19 @@ extern "C" void paperpad_touch_attach(void* window_pointer) {
             [overlay.topAnchor constraintEqualToAnchor:host.topAnchor],
             [overlay.bottomAnchor constraintEqualToAnchor:host.bottomAnchor],
         ]];
+    });
+}
+
+extern "C" void PaperPad_SetPhysicalControllerConnected(int connected) {
+#if TARGET_OS_SIMULATOR
+    // CoreSimulator exposes its synthetic MFi "Gamepad" even when no external
+    // controller is paired. Keep touch controls available in Simulator tests.
+    connected = 0;
+#endif
+    const bool isConnected = connected != 0;
+    g_physical_controller_connected.store(isConnected, std::memory_order_relaxed);
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [g_touch_overlay setPhysicalControllerConnected:isConnected];
     });
 }
 
@@ -808,6 +871,8 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     UISlider* _volumeSlider;
     UILabel* _volumeLabel;
     UISegmentedControl* _resolutionControl;
+    UILabel* _resolutionStatusLabel;
+    NSTimer* _resolutionTimer;
     UISegmentedControl* _aspectControl;
     UISwitch* _touchControlsSwitch;
     UISlider* _touchOpacitySlider;
@@ -871,10 +936,15 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
     [_resolutionControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
     [stack addArrangedSubview:_resolutionControl];
+    _resolutionStatusLabel = [self label:@"Auto chooses the largest whole-number scale that fits this screen."];
+    _resolutionStatusLabel.font = [UIFont systemFontOfSize:14.0];
+    _resolutionStatusLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1.0];
+    _resolutionStatusLabel.numberOfLines = 3;
+    [stack addArrangedSubview:_resolutionStatusLabel];
 
     // Aspect ratio.
     [stack addArrangedSubview:[self label:@"Aspect Ratio"]];
-    _aspectControl = [[UISegmentedControl alloc] initWithItems:@[@"Original (4:3)", @"Expand"]];
+    _aspectControl = [[UISegmentedControl alloc] initWithItems:@[@"Original (4:3)", @"Fill Screen"]];
     _aspectControl.accessibilityLabel = @"Aspect Ratio";
     [_aspectControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
     [_aspectControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
@@ -911,15 +981,29 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [stack addArrangedSubview:_touchOpacitySlider];
 
     // Actions.
-    [stack addArrangedSubview:[self actionButton:@"Edit Touch Layout" action:@selector(editLayoutPressed)]];
-    [stack addArrangedSubview:[self actionButton:@"Reset Touch Layout" action:@selector(resetLayoutPressed)]];
-    [stack addArrangedSubview:[self actionButton:@"Share Diagnostics…" action:@selector(diagnosticsPressed)]];
-    [stack addArrangedSubview:[self actionButton:@"Manage Game ROM" action:@selector(romPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Edit Touch Layout"
+                                      systemImage:@"hand.draw"
+                                             action:@selector(editLayoutPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Reset Touch Layout"
+                                      systemImage:@"arrow.counterclockwise"
+                                             action:@selector(resetLayoutPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Share Diagnostics…"
+                                      systemImage:@"square.and.arrow.up"
+                                             action:@selector(diagnosticsPressed)]];
+    [stack addArrangedSubview:[self actionButton:@"Manage Game ROM"
+                                      systemImage:@"externaldrive"
+                                             action:@selector(romPressed)]];
 
-    UIButton* done = [self actionButton:@"Done" action:@selector(donePressed)];
-    [done setTitle:@"Done" forState:UIControlStateNormal];
-    done.titleLabel.font = [UIFont boldSystemFontOfSize:19.0];
-    done.contentHorizontalAlignment = UIControlContentHorizontalAlignmentCenter;
+    UIButton* done = [UIButton buttonWithType:UIButtonTypeSystem];
+    UIButtonConfiguration* doneConfiguration = [UIButtonConfiguration filledButtonConfiguration];
+    doneConfiguration.title = @"Done";
+    doneConfiguration.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+    doneConfiguration.contentInsets = NSDirectionalEdgeInsetsMake(13.0, 18.0, 13.0, 18.0);
+    done.configuration = doneConfiguration;
+    done.titleLabel.font = [UIFont boldSystemFontOfSize:17.0];
+    done.accessibilityLabel = @"Done";
+    [done addTarget:self action:@selector(donePressed) forControlEvents:UIControlEventTouchUpInside];
+    [done.heightAnchor constraintGreaterThanOrEqualToConstant:50.0].active = YES;
     [stack addArrangedSubview:done];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -944,11 +1028,39 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     [self refreshFromDefaults];
+    [self refreshResolutionStatus];
+    [_resolutionTimer invalidate];
+    _resolutionTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+                                                       target:self
+                                                     selector:@selector(refreshResolutionStatus)
+                                                     userInfo:nil
+                                                      repeats:YES];
 }
 
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
+    [_resolutionTimer invalidate];
+    _resolutionTimer = nil;
     [g_touch_overlay setModalControlsHidden:NO];
+}
+
+- (void)refreshResolutionStatus {
+    uint32_t scaleMilli = 0;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    const BOOL available = PaperPad_GetEffectiveRenderState(&scaleMilli, &width, &height) != 0;
+    const BOOL automatic = _resolutionControl.selectedSegmentIndex == 0;
+    if (available) {
+        _resolutionStatusLabel.text = [NSString stringWithFormat:
+            automatic ? @"Auto is currently %.2fx (%ux%u internal). Auto may exceed 4x to fit the screen; original textures keep their source detail."
+                      : @"Renderer confirms %.2fx (%ux%u internal).",
+            scaleMilli / 1000.0, width, height];
+    } else {
+        _resolutionStatusLabel.text = automatic
+            ? @"Auto chooses the largest whole-number scale that fits this screen and may exceed 4x. Waiting for the renderer…"
+            : @"Waiting for renderer confirmation…";
+    }
+    _resolutionStatusLabel.accessibilityLabel = _resolutionStatusLabel.text;
 }
 
 - (UILabel*)label:(NSString*)text {
@@ -959,14 +1071,23 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     return label;
 }
 
-- (UIButton*)actionButton:(NSString*)title action:(SEL)action {
+- (UIButton*)actionButton:(NSString*)title systemImage:(NSString*)systemImage action:(SEL)action {
     UIButton* button = [UIButton buttonWithType:UIButtonTypeSystem];
-    [button setTitle:title forState:UIControlStateNormal];
+    UIButtonConfiguration* configuration = [UIButtonConfiguration tintedButtonConfiguration];
+    configuration.title = title;
+    configuration.image = [UIImage systemImageNamed:systemImage];
+    configuration.imagePadding = 12.0;
+    configuration.cornerStyle = UIButtonConfigurationCornerStyleMedium;
+    configuration.baseForegroundColor = UIColor.systemBlueColor;
+    configuration.baseBackgroundColor = [UIColor colorWithWhite:0.24 alpha:1.0];
+    configuration.contentInsets = NSDirectionalEdgeInsetsMake(13.0, 16.0, 13.0, 16.0);
+    button.configuration = configuration;
     button.titleLabel.font = [UIFont systemFontOfSize:17.0];
-    [button setTitleColor:[UIColor systemBlueColor] forState:UIControlStateNormal];
     button.contentHorizontalAlignment = UIControlContentHorizontalAlignmentLeft;
+    button.accessibilityLabel = title;
+    button.accessibilityTraits |= UIAccessibilityTraitButton;
     [button addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];
-    [button.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+    [button.heightAnchor constraintGreaterThanOrEqualToConstant:50.0].active = YES;
     return button;
 }
 
@@ -989,7 +1110,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 
 - (void)persist {
     NSDictionary* saved = @{
-        @"schemaVersion": @2,
+        @"schemaVersion": @4,
         @"volume": @(_volumeSlider.value / 100.0),
         @"resolution": @(_resolutionControl.selectedSegmentIndex),
         @"aspect": @(_aspectControl.selectedSegmentIndex),
@@ -1008,8 +1129,10 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 
 - (void)graphicsChanged:(UISegmentedControl*)control {
     PaperPad_SetGraphicsConfig((int)_resolutionControl.selectedSegmentIndex,
-                               (int)_aspectControl.selectedSegmentIndex);
+                               (int)_aspectControl.selectedSegmentIndex,
+                               0);
     [self persist];
+    [self refreshResolutionStatus];
 }
 
 - (void)touchControlsChanged:(UISwitch*)control {
@@ -1080,7 +1203,7 @@ extern "C" int SDL_main(int argc, char** argv) {
             NSInteger resolution = resolutionModeFromSettings(settings);
             int aspect = settings[@"aspect"] ? [settings[@"aspect"] intValue] : 0;
             PaperPad_SetAudioVolume(volume);
-            PaperPad_SetGraphicsConfig(static_cast<int>(resolution), aspect);
+            PaperPad_SetGraphicsConfig(static_cast<int>(resolution), aspect, 0);
         }
 
         NSFileManager* files = [NSFileManager defaultManager];
@@ -1097,12 +1220,18 @@ extern "C" int SDL_main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
         paperpad_start_diagnostics_log((__bridge void*)root);
-        if (!paperpad_prepare_rom_setup()) return EXIT_FAILURE;
+        if (!paperpad_prepare_rom_setup()) {
+            paperpad_finish_diagnostics_log((__bridge void*)root);
+            return EXIT_FAILURE;
+        }
         if (chdir(root.fileSystemRepresentation) != 0) {
             std::perror("PaperPad could not enter Application Support");
+            paperpad_finish_diagnostics_log((__bridge void*)root);
             return EXIT_FAILURE;
         }
 
-        return paperpad_recomp_main(argc, argv);
+        const int result = paperpad_recomp_main(argc, argv);
+        paperpad_finish_diagnostics_log((__bridge void*)root);
+        return result;
     }
 }

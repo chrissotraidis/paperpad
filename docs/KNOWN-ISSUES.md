@@ -2,7 +2,7 @@
 
 The detailed entries below preserve the 2026-08-05 through 2026-08-06 failure
 investigations and fixes. They are historical evidence, not the current release
-status. See `docs/STATUS.md` for the 2026-08-10 acceptance boundary and open
+status. See `docs/STATUS.md` for the 2026-08-11 acceptance boundary and open
 gates. Entries marked fixed are expected to remain covered by the pinned ReCut
 snapshot or the maintained patch series.
 
@@ -23,22 +23,17 @@ snapshot or the maintained patch series.
    ~200 bytes/sec when the game starts freezing), which is downstream of the
    scheduler deadlock below rather than the root cause.
 
-   **Root cause (2026-08-05 23:20, definitive)**: the recompiled `n_aspMain`
-   ucode never sets its audio command pointer. In the real ucode, `$29`
-   (the command pointer) is set to `0x2B0` in the delay slot of a `jr $5`
-   inside a DMA subroutine at RSP offset `0x10A0`; that subroutine is dead
-   code in the RSPRecomp output (no direct branch targets it and it is not in
-   `extra_indirect_branch_targets`), so on every task the ucode runs with
-   `$29 = 0` and reads DMEM[0..] — its own dispatch table — as the audio
-   command list. That yields "Unhandled jump target 0x0000/0xFFFFF000"
-   (dispatch table slots 12/14 = `0x1C84`/`0x02B0` are also missing from the
-   generated switch, so even correct opcodes 0x0C/0x0E would fail), and
-   occasionally a task enters an infinite DMA-copy spin inside the ucode
-   (observed at `n_aspMain_impl +1132/+1152`; the SP Task Thread never
-   returns, `sp_complete` never fires, all PM threads park — the freeze).
-   The upstream N64ModernRuntime never runs this ucode: it routes `M_AUDTASK`
-   through mupen64plus-rsp-hle (`alist_process_naudio`). The mstan fork
-   replaced that path with the recompiled ucode, which regressed audio.
+   **Root cause, corrected 2026-08-11**: the generated `n_aspMain` function is
+   not a standalone replacement for the complete RSP task path. It starts with
+   scalar registers cleared, but the real audio microcode assumes its boot
+   microcode has already populated registers and DMEM before transferring
+   control. Current RSPRecomp output still produced `Unhandled jump target
+   0x0000` at the first audio task with `$26/$25/$29 = 0`. A bounded experiment
+   that supplied the ABI table and seeded `$29` merely changed the first bad
+   target to `0x0001`, while `$26/$25` still lacked the boot-supplied command
+   state. That proves the old single-register diagnosis was incomplete. A
+   correct non-HLE replacement must execute or faithfully reproduce the whole
+   audio RSP boot contract; isolated register seeds are rejected.
 
    **Fix (applied, uncommitted in `ref/`)**: restore the upstream HLE path —
    `recomp::rsp::run_task` branches `M_AUDTASK` to a new
@@ -48,11 +43,21 @@ snapshot or the maintained patch series.
    `ref/mupen64plus-rsp-hle`. Patch file:
    `patches/mstan-n64modernruntime/hle-audio-rsp.patch`. Result: no flood,
    audio tasks complete every frame, intro/story/gameplay verified on macOS
-   and iPhone Simulator. Audible output still needs a speaker/device check.
+   and iPhone Simulator. Physical-iPad listening subsequently confirmed
+   intermittent flutter/static, so HLE is functional but not release-quality.
 
-   Optional follow-up (NOT needed for playability): regenerate `n_aspMain`
-   with `extra_indirect_branch_targets` including `0x1C84` and `0x02B0` (and
-   verify the `$29` setup path) so the recompiled ucode could replace HLE.
+   **Fresh physical evidence 2026-08-11 15:59**: the 82,919-byte current
+   device log captured while the defect was audible held roughly 16–64 ms of
+   queued 48 kHz output, reported zero conversion errors, zero queue errors,
+   no interval above 100 ms, and sub-full-scale PCM. This rules out SDL queue
+   starvation, cache exhaustion, and output clipping as the observed cause.
+   Do not mask the defect with another unmeasured buffer, gain, or filter
+   change.
+
+   Follow-up: integrate and validate a complete boot+audio RSP implementation,
+   such as an iOS-capable ParaLLEl-RSP path, then compare bounded PCM and
+   physical listening against HLE. Do not re-enable standalone `n_aspMain` or
+   treat a generated switch-table edit as a complete fix.
 
 2. **Teardown autorelease crash (FIXED 2026-08-06)** — RT64 Workload worker
    threads crashed in `objc_autoreleasePoolPop` → `objc_release` on dangling
@@ -316,13 +321,17 @@ snapshot or the maintained patch series.
    not a stale or half-built framebuffer.
 
 8. **Music played with severe block-boundary clipping (FIXED IN CODE
-   2026-08-10; audible acceptance open)** — the SDL queue overlap path removed
-   four frames from its byte count but advanced the float pointer by only two
-   frames. Every block therefore began at the wrong sample position. The
-   pointer now advances by `output_channels * discarded_output_frames`, matching
-   the byte calculation. The final 4x current-session log contained no CoreAudio
-   overload or skipped-cycle message. Simulator/runtime evidence cannot prove
-   subjective audible quality; user and physical-device listening remain open.
+   2026-08-11; audible acceptance open)** — the earlier overlap-pointer repair
+   fixed one indexing error but retained a stateless block converter. Bounded
+   source/output PCM comparison showed that converter added high-frequency
+   energy and doubled the worst step. PaperPad now keeps one continuous
+   `SDL_AudioStream` and no longer shortens already-rendered PCM to catch up.
+   Simulator output matched the source spectrum. The installed physical build
+   then produced 190 telemetry windows with the expected 32→48 kHz frame ratio,
+   a 60.75 ms maximum queue, no over-100 ms event, no conversion/queue error,
+   and no block-boundary peak above its within-block peak. These measurements
+   establish a clean structural path, but cannot prove subjective audible
+   quality; human physical-device listening remains open.
 
 9. **`CAMetalLayer` display-sync property changed off the main thread (FIXED
    2026-08-10)** — the clean reproduced launch logged UIKit's off-main-layer
@@ -330,6 +339,30 @@ snapshot or the maintained patch series.
    `isVsyncEnabled` now marshal the layer access synchronously to the main
    queue when called from a renderer thread. The final log did not reproduce
    the warning.
+
+10. **Metal drawables and Simulator FramePacing objects accumulated once per
+    frame (FIXED 2026-08-11)** — a sustained level-27 Toad Town run grew from
+    148.7 to 160.0 MiB physical footprint while RT64 `VM_ALLOCATE` regions
+    stayed fixed at 255. Heap inspection found 42,354 live `CAMetalDrawable`,
+    42,352 drawable-lifetime, and 757,314 `FPInFlightCommandBuffer` objects.
+    `MetalSwapChain::acquireTexture` retained each replacement drawable but
+    overwrote the swap-chain slot without releasing its previous retained
+    owner; presentation's independent retain/release did not balance the slot.
+    `patches/rt64/metal-drawable-slot-lifetime.patch` now retains the new
+    drawable first, releases the old slot owner, assigns the replacement, and
+    makes destruction null-safe. Clean patch replay and the rebuilt ROM-free
+    app passed. Across thousands of post-fix frames, heap counts stayed exactly
+    3 drawables, 3 lifetimes, and 72 FramePacing command buffers; physical
+    footprint ended at 130.1 MiB below a 145.3 MiB peak.
+
+11. **Simulator shutdown aborted while deallocating `CAMetalLayer` on the Gfx
+    Thread (FIXED 2026-08-11)** — the user-supplied 12:22 iPhone report showed
+    `CAMetalLayer dealloc` → `MetalSwapChain::~MetalSwapChain`; an isolated iPad
+    shutdown reproduced the same abort at 12:32. RT64 treated
+    `renderWindow.view` as owned and released it, but the layer is supplied and
+    owned by SDL/UIKit. `patches/rt64/ios-metal-view-lifetime.patch` suppresses
+    only that unowned iOS release and preserves macOS behavior. Rebuilt iPhone
+    and iPad active-rendering shutdowns produced no newer crash report.
 
 3. **simctl screenshots are portrait-framebuffer** — the app is landscape, but
    `simctl io screenshot` returns the portrait device framebuffer, so PNG

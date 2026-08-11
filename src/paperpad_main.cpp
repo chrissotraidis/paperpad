@@ -15,7 +15,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -80,14 +79,64 @@ namespace {
     void* ios_metal_layer = nullptr;
 #endif
     SDL_AudioDeviceID audio_device = 0;
-    SDL_AudioCVT audio_convert{};
+    SDL_AudioStream* audio_stream = nullptr;
     uint32_t sample_rate = 48000;
     uint32_t output_sample_rate = 48000;
     constexpr uint32_t input_channels = 2;
-    uint32_t output_channels = 2;
-    constexpr uint32_t duplicated_input_frames = 4;
-    uint32_t discarded_output_frames = 0;
+    constexpr uint32_t output_channels = 2;
     constexpr uint32_t bytes_per_input_frame = input_channels * sizeof(float);
+
+    struct AudioTelemetry {
+        std::chrono::steady_clock::time_point next_report{};
+        uint64_t callbacks = 0;
+        uint64_t input_frames = 0;
+        uint64_t output_frames = 0;
+        uint64_t peak_queue_us = 0;
+        uint64_t over_100ms_callbacks = 0;
+        uint32_t peak_input = 0;
+        uint64_t boundary_delta_sum_ppm = 0;
+        uint64_t boundary_count = 0;
+        uint32_t peak_boundary_delta_ppm = 0;
+        uint32_t peak_within_delta_ppm = 0;
+        uint64_t conversion_errors = 0;
+        uint64_t queue_errors = 0;
+    } audio_telemetry;
+    std::array<float, output_channels> previous_output_frame{};
+    bool has_previous_output_frame = false;
+
+    void report_audio_telemetry(uint64_t current_queue_us) {
+        const auto now = std::chrono::steady_clock::now();
+        if (audio_telemetry.next_report.time_since_epoch().count() == 0) {
+            audio_telemetry.next_report = now + std::chrono::seconds(2);
+            return;
+        }
+        if (now < audio_telemetry.next_report) return;
+
+        std::fprintf(stderr,
+            "[audio] input_hz=%u output_hz=%u callbacks=%llu input_frames=%llu "
+            "output_frames=%llu queue_us=%llu peak_queue_us=%llu over_100ms=%llu "
+            "peak_input=%u boundary_avg_ppm=%llu boundary_peak_ppm=%u "
+            "within_peak_ppm=%u conversion_errors=%llu queue_errors=%llu\n",
+            sample_rate,
+            output_sample_rate,
+            static_cast<unsigned long long>(audio_telemetry.callbacks),
+            static_cast<unsigned long long>(audio_telemetry.input_frames),
+            static_cast<unsigned long long>(audio_telemetry.output_frames),
+            static_cast<unsigned long long>(current_queue_us),
+            static_cast<unsigned long long>(audio_telemetry.peak_queue_us),
+            static_cast<unsigned long long>(audio_telemetry.over_100ms_callbacks),
+            audio_telemetry.peak_input,
+            static_cast<unsigned long long>(audio_telemetry.boundary_count == 0
+                ? 0
+                : audio_telemetry.boundary_delta_sum_ppm / audio_telemetry.boundary_count),
+            audio_telemetry.peak_boundary_delta_ppm,
+            audio_telemetry.peak_within_delta_ppm,
+            static_cast<unsigned long long>(audio_telemetry.conversion_errors),
+            static_cast<unsigned long long>(audio_telemetry.queue_errors));
+
+        audio_telemetry = {};
+        audio_telemetry.next_report = now + std::chrono::seconds(2);
+    }
 
     // Touch overlay state written by the Apple shell.
     std::atomic<uint16_t> touch_buttons{0};
@@ -281,6 +330,11 @@ namespace {
         }
         controller = opened_controller;
         active_controller_device_index = device_index;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        PaperPad_SetPhysicalControllerConnected(1);
+#endif
+        std::fprintf(stderr, "[input] controller connected: %s\n",
+            SDL_GameControllerName(controller) ?: "unknown");
         return true;
     }
 
@@ -305,6 +359,9 @@ namespace {
                 return;
             }
         }
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        PaperPad_SetPhysicalControllerConnected(0);
+#endif
     }
 
     ultramodern::gfx_callbacks_t::gfx_data_t create_gfx() {
@@ -323,6 +380,12 @@ namespace {
         uint32_t flags = SDL_WINDOW_RESIZABLE;
 #if defined(__APPLE__)
         flags |= SDL_WINDOW_METAL;
+#if TARGET_OS_IPHONE
+        // iOS owns a full-screen UIWindow. Mark its SDL view borderless so the
+        // SDL view controller hides the status bar and gives RT64 the complete
+        // drawable before fitting Original (4:3) or Expand.
+        flags |= SDL_WINDOW_BORDERLESS;
+#endif
 #endif
 
         window = SDL_CreateWindow("PaperPad", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, 960, 720, flags);
@@ -404,21 +467,23 @@ namespace {
         }
     }
 
-    void update_audio_converter() {
-        int ret = SDL_BuildAudioCVT(
-            &audio_convert,
+    void update_audio_stream() {
+        if (audio_stream != nullptr) {
+            SDL_FreeAudioStream(audio_stream);
+            audio_stream = nullptr;
+        }
+
+        audio_stream = SDL_NewAudioStream(
             AUDIO_F32,
             input_channels,
             static_cast<int>(sample_rate),
             AUDIO_F32,
             static_cast<Uint8>(output_channels),
             static_cast<int>(output_sample_rate));
-        if (ret < 0) {
-            std::fprintf(stderr, "Error creating SDL audio converter: %s\n", SDL_GetError());
+        if (audio_stream == nullptr) {
+            std::fprintf(stderr, "Error creating SDL audio stream: %s\n", SDL_GetError());
             std::exit(EXIT_FAILURE);
         }
-
-        discarded_output_frames = duplicated_input_frames * output_sample_rate / sample_rate;
     }
 
     void reset_audio(uint32_t output_freq) {
@@ -442,7 +507,7 @@ namespace {
 
         SDL_PauseAudioDevice(audio_device, 0);
         output_sample_rate = output_freq;
-        update_audio_converter();
+        update_audio_stream();
     }
 
     void set_frequency(uint32_t freq) {
@@ -453,7 +518,7 @@ namespace {
             return;
         }
 
-        update_audio_converter();
+        update_audio_stream();
     }
 
     void queue_samples(int16_t* audio_data, size_t sample_count) {
@@ -461,37 +526,28 @@ namespace {
             return;
         }
 
-        static std::vector<float> swap_buffer;
-        static std::array<float, duplicated_input_frames * input_channels> duplicated_sample_buffer{};
+        static std::vector<float> source_buffer;
+        static std::vector<float> converted_buffer;
 
-        size_t converted_input_samples = sample_count + duplicated_input_frames * input_channels;
-        size_t max_sample_count = std::max(converted_input_samples, converted_input_samples * audio_convert.len_mult);
-        if (max_sample_count > swap_buffer.size()) {
-            swap_buffer.resize(max_sample_count);
-        }
-
-        for (size_t i = 0; i < duplicated_sample_buffer.size(); i++) {
-            swap_buffer[i] = duplicated_sample_buffer[i];
-        }
+        source_buffer.resize(sample_count);
 
         const float output_gain = 0.5f / 32768.0f;
         for (size_t i = 0; i + 1 < sample_count; i += input_channels) {
-            swap_buffer[i + 0 + duplicated_input_frames * input_channels] = audio_data[i + 1] * output_gain;
-            swap_buffer[i + 1 + duplicated_input_frames * input_channels] = audio_data[i + 0] * output_gain;
+            audio_telemetry.peak_input = std::max(
+                audio_telemetry.peak_input,
+                static_cast<uint32_t>(std::max(
+                    std::abs(static_cast<int32_t>(audio_data[i + 0])),
+                    std::abs(static_cast<int32_t>(audio_data[i + 1])))));
+            source_buffer[i + 0] = audio_data[i + 1] * output_gain;
+            source_buffer[i + 1] = audio_data[i + 0] * output_gain;
         }
 
-        if (sample_count >= duplicated_sample_buffer.size()) {
-            for (size_t i = 0; i < duplicated_sample_buffer.size(); i++) {
-                duplicated_sample_buffer[i] = swap_buffer[i + sample_count];
-            }
-        }
-
-        audio_convert.buf = reinterpret_cast<Uint8*>(swap_buffer.data());
-        audio_convert.len = static_cast<int>(converted_input_samples * sizeof(float));
-
-        int ret = SDL_ConvertAudio(&audio_convert);
-        if (ret < 0) {
-            std::fprintf(stderr, "Error converting audio: %s\n", SDL_GetError());
+        if (SDL_AudioStreamPut(
+                audio_stream,
+                source_buffer.data(),
+                static_cast<int>(sample_count * sizeof(float))) < 0) {
+            audio_telemetry.conversion_errors++;
+            std::fprintf(stderr, "Error feeding SDL audio stream: %s\n", SDL_GetError());
             return;
         }
 
@@ -500,26 +556,69 @@ namespace {
             uint64_t(SDL_GetQueuedAudioSize(audio_device)) /
             bytes_per_output_frame * 1000000 / output_sample_rate;
 
-        uint32_t discard_bytes = output_channels * discarded_output_frames * sizeof(float);
-        uint32_t queue_bytes = audio_convert.len_cvt > discard_bytes ? audio_convert.len_cvt - discard_bytes : 0;
-        // SDL_AudioCVT reports bytes, while this pointer is measured in float
-        // samples. Skip every prepended overlap frame (all output channels),
-        // matching the bytes removed from queue_bytes below.
-        float* samples_to_queue = swap_buffer.data() + (output_channels * discarded_output_frames);
-
-        uint32_t skip_factor = static_cast<uint32_t>(queued_input_us / 100000);
-        if (skip_factor != 0 && queue_bytes >= output_channels * sizeof(float)) {
-            uint32_t skip_ratio = 1u << std::min<uint32_t>(skip_factor, 4);
-            uint32_t output_frame_count = queue_bytes / (output_channels * sizeof(float));
-            output_frame_count /= skip_ratio;
-            for (uint32_t i = 0; i < output_frame_count; i++) {
-                samples_to_queue[2 * i + 0] = samples_to_queue[2 * skip_ratio * i + 0];
-                samples_to_queue[2 * i + 1] = samples_to_queue[2 * skip_ratio * i + 1];
-            }
-            queue_bytes = output_frame_count * output_channels * sizeof(float);
+        int available_bytes = SDL_AudioStreamAvailable(audio_stream);
+        if (available_bytes < 0) {
+            audio_telemetry.conversion_errors++;
+            std::fprintf(stderr, "Error reading SDL audio stream availability: %s\n", SDL_GetError());
+            return;
         }
+        available_bytes -= available_bytes % static_cast<int>(output_channels * sizeof(float));
+        converted_buffer.resize(static_cast<size_t>(available_bytes) / sizeof(float));
+        int converted_bytes = 0;
+        if (available_bytes != 0) {
+            converted_bytes = SDL_AudioStreamGet(
+                audio_stream, converted_buffer.data(), available_bytes);
+            if (converted_bytes < 0) {
+                audio_telemetry.conversion_errors++;
+                std::fprintf(stderr, "Error draining SDL audio stream: %s\n", SDL_GetError());
+                return;
+            }
+        }
+        uint32_t queue_bytes = static_cast<uint32_t>(converted_bytes);
+        float* samples_to_queue = converted_buffer.data();
+
+        // Let N64ModernRuntime's get_frames_remaining feedback regulate
+        // production. Never shorten already-rendered PCM to catch up: that
+        // creates discontinuities and pitch/time jumps.
+        audio_telemetry.callbacks++;
+        audio_telemetry.input_frames += sample_count / input_channels;
+        audio_telemetry.output_frames +=
+            queue_bytes / (output_channels * sizeof(float));
+        audio_telemetry.peak_queue_us = std::max(audio_telemetry.peak_queue_us, queued_input_us);
+        if (queued_input_us >= 100000) audio_telemetry.over_100ms_callbacks++;
 
         if (queue_bytes != 0) {
+            const uint32_t output_frame_count =
+                queue_bytes / (output_channels * sizeof(float));
+            if (output_frame_count != 0) {
+                if (has_previous_output_frame) {
+                    const float left_delta = std::abs(samples_to_queue[0] - previous_output_frame[0]);
+                    const float right_delta = std::abs(samples_to_queue[1] - previous_output_frame[1]);
+                    const uint32_t delta_ppm = static_cast<uint32_t>(
+                        std::lround(std::max(left_delta, right_delta) * 1000000.0f));
+                    audio_telemetry.boundary_delta_sum_ppm += delta_ppm;
+                    audio_telemetry.boundary_count++;
+                    audio_telemetry.peak_boundary_delta_ppm = std::max(
+                        audio_telemetry.peak_boundary_delta_ppm, delta_ppm);
+                }
+                for (uint32_t frame = 1; frame < output_frame_count; ++frame) {
+                    const size_t current = frame * output_channels;
+                    const size_t previous = current - output_channels;
+                    const float left_delta = std::abs(
+                        samples_to_queue[current + 0] - samples_to_queue[previous + 0]);
+                    const float right_delta = std::abs(
+                        samples_to_queue[current + 1] - samples_to_queue[previous + 1]);
+                    const uint32_t delta_ppm = static_cast<uint32_t>(
+                        std::lround(std::max(left_delta, right_delta) * 1000000.0f));
+                    audio_telemetry.peak_within_delta_ppm = std::max(
+                        audio_telemetry.peak_within_delta_ppm, delta_ppm);
+                }
+                const size_t last = (output_frame_count - 1) * output_channels;
+                previous_output_frame[0] = samples_to_queue[last + 0];
+                previous_output_frame[1] = samples_to_queue[last + 1];
+                has_previous_output_frame = true;
+            }
+
             // Apply the master volume gain to the float PCM before queueing.
             const float gain = audio_volume.load(std::memory_order_relaxed);
             if (gain < 1.0f) {
@@ -529,8 +628,18 @@ namespace {
                     samples[i] *= gain;
                 }
             }
-            SDL_QueueAudio(audio_device, samples_to_queue, queue_bytes);
+
+            if (SDL_QueueAudio(audio_device, samples_to_queue, queue_bytes) < 0) {
+                audio_telemetry.queue_errors++;
+                std::fprintf(stderr, "Error queueing audio: %s\n", SDL_GetError());
+            }
         }
+
+        const uint64_t queued_output_us =
+            uint64_t(SDL_GetQueuedAudioSize(audio_device)) /
+            (output_channels * sizeof(float)) * 1000000 / output_sample_rate;
+        audio_telemetry.peak_queue_us = std::max(audio_telemetry.peak_queue_us, queued_output_us);
+        report_audio_telemetry(queued_output_us);
     }
 
     size_t get_frames_remaining() {
@@ -539,6 +648,12 @@ namespace {
         }
 
         uint64_t buffered_byte_count = SDL_GetQueuedAudioSize(audio_device);
+        if (audio_stream != nullptr) {
+            const int converted_bytes = SDL_AudioStreamAvailable(audio_stream);
+            if (converted_bytes > 0) {
+                buffered_byte_count += static_cast<uint64_t>(converted_bytes);
+            }
+        }
         buffered_byte_count = buffered_byte_count * input_channels * sample_rate / output_sample_rate / output_channels;
         return static_cast<size_t>(buffered_byte_count / bytes_per_input_frame);
     }
@@ -660,9 +775,10 @@ namespace {
     RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
         // Audio (M_AUDTASK) is handled by the runtime's HLE NAUDIO backend
         // (mupen64plus-rsp-hle) since 2026-08-05; the recompiled n_aspMain
-        // ucode is broken for Paper Mario (command pointer never set) and
-        // used to flood errors / spin forever. See KNOWN-ISSUES.md macOS #1.
-        // PAPERPAD_DROP_AUDIO_RSP=1 remains as a legacy escape hatch.
+        // ucode is broken for Paper Mario because it omits RSP boot-register
+        // and DMEM setup, and used to flood errors / spin forever. See
+        // KNOWN-ISSUES.md macOS #1. PAPERPAD_DROP_AUDIO_RSP=1 remains as a
+        // legacy escape hatch.
         static const bool drop_audio_rsp = []() {
             const char* v = std::getenv("PAPERPAD_DROP_AUDIO_RSP");
             return v != nullptr && v[0] != '\0' && v[0] != '0';
@@ -782,9 +898,13 @@ extern "C" void PaperPad_SetAudioVolume(float volume) {
 
 // Graphics settings from the iOS settings sheet.
 //   resolution_mode: 0 = Auto (scale to window), 1..4 = fixed multiplier
-//   aspect_mode:     0 = Original (4:3 letterbox), 1 = Expand (fill window)
+//   aspect_mode:     0 = Original (4:3), 1 = final-presentation fill/crop
+//   image_filter:    reserved; PaperPad uses the stable smooth path
 // Persisted by the shell; applied here via the runtime's graphics config.
-extern "C" void PaperPad_SetGraphicsConfig(int resolution_mode, int aspect_mode) {
+extern "C" void PaperPad_SetGraphicsConfig(int resolution_mode,
+                                             int aspect_mode,
+                                             int image_filter_mode) {
+    (void)image_filter_mode;
     graphics_settings_applied.store(true, std::memory_order_relaxed);
     auto config = ultramodern::renderer::get_graphics_config();
     const int fixed_scale = std::clamp(resolution_mode, 0, 4);
@@ -807,6 +927,9 @@ extern "C" void PaperPad_SetGraphicsConfig(int resolution_mode, int aspect_mode)
     config.ar_option = aspect_mode == 1
         ? ultramodern::renderer::AspectRatio::Expand
         : ultramodern::renderer::AspectRatio::Original;
+    config.filtering_option = ultramodern::renderer::TextureFiltering::PixelScaling;
+    config.upscale_2d = ultramodern::renderer::Upscale2D::ScaledOnly;
+    config.three_point_filtering = true;
     ultramodern::renderer::set_graphics_config(config);
 }
 
@@ -926,9 +1049,16 @@ int PAPERPAD_MAIN(int argc, char** argv) {
         SDL_GameControllerClose(controller);
         controller = nullptr;
     }
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    PaperPad_SetPhysicalControllerConnected(0);
+#endif
     if (audio_device != 0) {
         SDL_CloseAudioDevice(audio_device);
         audio_device = 0;
+    }
+    if (audio_stream != nullptr) {
+        SDL_FreeAudioStream(audio_stream);
+        audio_stream = nullptr;
     }
     SDL_Quit();
 

@@ -70,7 +70,9 @@ xcrun simctl launch booted com.chrissotraidis.paperpad
 
 Choose your own ROM from the first-run screen. The app validates, normalizes, and stores it privately in that Simulator's Application Support container. Use PaperPad Menu > Manage Game ROM to replace or remove it.
 
-For settings acceptance, open PaperPad Menu > Settings and exercise Auto, 1x, 2x, 3x, and 4x one at a time. Confirm the selected mode survives a terminate/relaunch and inspect the runtime `[render]` line rather than treating the selected segment alone as renderer proof. `Share Diagnostics…` should present a system share sheet containing `PaperPad-Diagnostics.txt`; inspect the report and cancel the sheet without choosing a destination during local tests.
+For settings acceptance, open PaperPad Menu > Settings and exercise Auto, 1x, 2x, 3x, and 4x one at a time. Confirm the selected mode survives a terminate/relaunch and that the live renderer-confirmed scale/internal dimensions update; a selected segment by itself is not renderer proof. Auto may correctly exceed 4x. Confirm no experimental image-filter selector is present and diagnostics reports `Smooth (fixed)`. Exercise Original and Fill Screen on both a near-4:3 iPad and a wider iPhone; confirm Fill Screen uses a final center crop, and verify the battle hand stays attached to every selected target. Inspect and tap each native action row and the filled Done button.
+
+Open the first-level PaperPad Menu and choose `Share Diagnostics & Logs…`. Confirm gameplay controls are hidden and cleared while the system share sheet is visible, inspect `PaperPad-Diagnostics.txt`, then cancel without choosing a destination during local tests. The report should contain bounded current-session and, when available, previous-session log tails; it must contain only ROM-present yes/no, never ROM/save contents or raw audio. Review and redact arbitrary runtime text before sharing. Dismissal must restore gameplay controls according to the saved Touch Controls setting.
 
 End the session before testing another target:
 
@@ -110,6 +112,16 @@ xcrun devicectl device process launch --device DEVICE_ID \
 
 Install in place. Do not uninstall the app or replace its data container when updating a device that already has private game data, saves, or preferences. Back up and verify those containers before any operation that could replace them. A successful build, install, launch command, or PID does not by itself establish gameplay, visual, audio, lifecycle, thermal, or long-session acceptance.
 
+To prepare a private later-game File 2 without overwriting File 1, first stop PaperPad and read only the exact 128 KiB `Library/Application Support/PaperPad/saves/pm.n64.us.bin` file. Keep both live and donor saves outside Git, then create a new output file:
+
+```sh
+scripts/merge-paper-mario-save-slot.py LIVE_SAVE DONOR_SAVE OUTPUT_SAVE --file 2
+```
+
+The tool validates sector magic/checksums, preserves the currently active logical files, and refuses to overwrite either input. Inspect its report, copy only the new exact save file back, relaunch, and read that exact file back again to verify its hash. Never copy an entire app-data container, commit the donor/output, or use this flow while the app is writing saves.
+
+For controller acceptance, connect a supported controller during gameplay and verify left stick/D-pad, A/B/Start, L/R/Z, right-stick C buttons, automatic touch-overlay hiding, utility-menu availability, disconnect restoration, reconnect, and sustained gameplay.
+
 ## Source and patch verification
 
 ```sh
@@ -138,4 +150,4 @@ Then follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). A Simulator result doe
 - **Pinned checkout is modified**: inspect `ref/` changes. The fetch script intentionally refuses to change revisions over unknown edits. Maintained patches should be applied only through `scripts/apply-patches.sh`.
 - **Missing MIPS assembler**: run `scripts/build-mips-binutils.sh` or rerun the clean build; it creates a local ignored toolchain.
 - **Simulator shows stale code**: terminate the app, reinstall the exact new `.app`, then relaunch. Shut down unused devices.
-- **Crash**: run `scripts/capture-crashes.sh`, remove sensitive/user-specific content from the report, and include exact reproduction steps.
+- **Crash**: after relaunching, use the first-level `Share Diagnostics & Logs…` action so the possible-unclean previous session is included. Review/redact the report and include exact reproduction steps. `scripts/capture-crashes.sh` remains useful for development-host crash reports.
