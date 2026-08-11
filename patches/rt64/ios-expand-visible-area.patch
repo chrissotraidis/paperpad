@@ -1,0 +1,249 @@
+diff --git a/lib/rt64/src/common/rt64_user_configuration.cpp b/lib/rt64/src/common/rt64_user_configuration.cpp
+index cc35442..de32160 100644
+--- a/lib/rt64/src/common/rt64_user_configuration.cpp
++++ b/lib/rt64/src/common/rt64_user_configuration.cpp
+@@ -21,6 +21,7 @@ namespace RT64 {
+         j["aspectTarget"] = cfg.aspectTarget;
+         j["extAspectRatio"] = cfg.extAspectRatio;
+         j["extAspectTarget"] = cfg.extAspectTarget;
++        j["fillActiveArea"] = cfg.fillActiveArea;
+         j["upscale2D"] = cfg.upscale2D;
+         j["threePointFiltering"] = cfg.threePointFiltering;
+         j["refreshRate"] = cfg.refreshRate;
+@@ -44,6 +45,7 @@ namespace RT64 {
+         cfg.aspectTarget = j.value("aspectTarget", defaultCfg.aspectTarget);
+         cfg.extAspectRatio = j.value("extAspectRatio", defaultCfg.extAspectRatio);
+         cfg.extAspectTarget = j.value("extAspectTarget", defaultCfg.extAspectTarget);
++        cfg.fillActiveArea = j.value("fillActiveArea", defaultCfg.fillActiveArea);
+         cfg.upscale2D = j.value("upscale2D", defaultCfg.upscale2D);
+         cfg.threePointFiltering = j.value("threePointFiltering", defaultCfg.threePointFiltering);
+         cfg.refreshRate = j.value("refreshRate", defaultCfg.refreshRate);
+@@ -75,6 +77,7 @@ namespace RT64 {
+         aspectTarget = 16.0f / 9.0f;
+         extAspectRatio = AspectRatio::Original;
+         extAspectTarget = 16.0f / 9.0f;
++        fillActiveArea = false;
+         upscale2D = Upscale2D::ScaledOnly;
+         threePointFiltering = true;
+         refreshRate = RefreshRate::Original;
+diff --git a/lib/rt64/src/common/rt64_user_configuration.h b/lib/rt64/src/common/rt64_user_configuration.h
+index 4857f22..a128ff3 100644
+--- a/lib/rt64/src/common/rt64_user_configuration.h
++++ b/lib/rt64/src/common/rt64_user_configuration.h
+@@ -94,6 +94,7 @@ namespace RT64 {
+         double aspectTarget;
+         AspectRatio extAspectRatio;
+         double extAspectTarget;
++        bool fillActiveArea;
+         Upscale2D upscale2D;
+         bool threePointFiltering;
+         RefreshRate refreshRate;
+@@ -174,4 +175,4 @@ namespace RT64 {
+         static bool read(UserConfiguration &cfg, std::istream &stream);
+         static bool write(const UserConfiguration &cfg, std::ostream &stream);
+     };
+-};
+\ No newline at end of file
++};
+diff --git a/lib/rt64/src/hle/rt64_present_queue.cpp b/lib/rt64/src/hle/rt64_present_queue.cpp
+index 4ec2053..0e44d77 100644
+--- a/lib/rt64/src/hle/rt64_present_queue.cpp
++++ b/lib/rt64/src/hle/rt64_present_queue.cpp
+@@ -17,12 +17,17 @@ namespace RT64 {
+     }
+ 
+     PresentQueue::~PresentQueue() {
++        stop();
++    }
++
++    void PresentQueue::stop() {
+         presentThreadRunning = false;
+         cursorCondition.notify_all();
+ 
+         if (presentThread != nullptr) {
+             presentThread->join();
+             delete presentThread;
++            presentThread = nullptr;
+         }
+ 
+         presentIdCondition.notify_all();
+@@ -100,6 +105,7 @@ namespace RT64 {
+         EnhancementConfiguration::Presentation::Mode presentationMode;
+         UserConfiguration::RefreshRate refreshRate;
+         UserConfiguration::Filtering filtering;
++        bool fillActiveArea;
+         uint32_t viOriginalRate;
+         uint32_t targetRate;
+         {
+@@ -108,6 +114,7 @@ namespace RT64 {
+             presentationMode = ext.sharedResources->enhancementConfig.presentation.mode;
+             refreshRate = ext.sharedResources->userConfig.refreshRate;
+             filtering = ext.sharedResources->userConfig.filtering;
++            fillActiveArea = ext.sharedResources->userConfig.fillActiveArea;
+             viOriginalRate = ext.sharedResources->viOriginalRate;
+             targetRate = ext.sharedResources->targetRate;
+         }
+@@ -325,6 +332,7 @@ namespace RT64 {
+                     renderParams.resolutionScale = colorTarget->resolutionScale;
+                     renderParams.downsamplingScale = 1;
+                     renderParams.filtering = filtering;
++                    renderParams.fillActiveArea = fillActiveArea;
+                     renderParams.vi = &present.screenVI;
+ 
+                     const bool useDownsampling = (colorTarget->downsampleMultiplier > 1);
+@@ -455,6 +463,10 @@ namespace RT64 {
+     void PresentQueue::threadLoop() {
+         Thread::setCurrentThreadName("RT64 Present");
+ 
++#if defined(__APPLE__)
++        AppleAutoreleasePoolMarker threadPool;
++#endif
++
+         // Create the semaphores used by the swap chains.
+         acquiredSemaphore = ext.device->createCommandSemaphore();
+         drawSemaphore = ext.device->createCommandSemaphore();
+@@ -475,6 +487,12 @@ namespace RT64 {
+ #endif
+         bool swapChainValid = !ext.swapChain->needsResize();
+         while (presentThreadRunning) {
++#if defined(__APPLE__)
++            // Metal-cpp command buffers returned by non-owning factory methods
++            // are autoreleased. Drain them every present instead of retaining
++            // the full session's serializer resources until thread shutdown.
++            AppleAutoreleasePoolMarker presentPool;
++#endif
+             {
+                 std::unique_lock<std::mutex> cursorLock(cursorMutex);
+                 cursorCondition.wait(cursorLock, [&]() {
+diff --git a/lib/rt64/src/hle/rt64_state.cpp b/lib/rt64/src/hle/rt64_state.cpp
+index 6b0bb31..6d67e4b 100644
+--- a/lib/rt64/src/hle/rt64_state.cpp
++++ b/lib/rt64/src/hle/rt64_state.cpp
+@@ -2009,11 +2009,12 @@ namespace RT64 {
+             ext.sharedQueueResources->configurationMutex.lock();
+             const hlslpp::float2 resolutionScale = ext.sharedQueueResources->resolutionScale;
+             const uint32_t downsampleMultiplier = ext.userConfig->downsampleMultiplier;
++            const bool fillActiveArea = ext.userConfig->fillActiveArea;
+             ext.sharedQueueResources->configurationMutex.unlock();
+             RenderViewport viewport;
+             RenderRect scissor;
+             hlslpp::float2 fbHdRegion;
+-            VIRenderer::getViewportAndScissor(ext.swapChain, lastScreenVI, resolutionScale, downsampleMultiplier, viewport, scissor, fbHdRegion);
++            VIRenderer::getViewportAndScissor(ext.swapChain, lastScreenVI, resolutionScale, downsampleMultiplier, fillActiveArea, viewport, scissor, fbHdRegion);
+ 
+             // Convert the mouse coordinates to native coordinates.
+             // FIXME: This needs a lot more work to be compatible with games with less standard VI modes.
+@@ -2736,4 +2737,4 @@ namespace RT64 {
+             break;
+         }
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/lib/rt64/src/render/rt64_vi_renderer.cpp b/lib/rt64/src/render/rt64_vi_renderer.cpp
+index d597d75..7125791 100644
+--- a/lib/rt64/src/render/rt64_vi_renderer.cpp
++++ b/lib/rt64/src/render/rt64_vi_renderer.cpp
+@@ -7,6 +7,8 @@
+ #include "shared/rt64_hlsl.h"
+ #include "shared/rt64_video_interface.h"
+ 
++#include <algorithm>
++
+ namespace RT64 {
+     // VIRenderer
+ 
+@@ -41,6 +43,14 @@ namespace RT64 {
+         return windowCenter + relativeCoordinate * relativeScale;
+     }
+ 
++    inline hlslpp::float2 fromActiveHDtoWindow(hlslpp::float2 coordinate, hlslpp::float2 activeTopLeft, hlslpp::float2 activeBottomRight, hlslpp::float2 windowSize) {
++        const hlslpp::float2 activeSize = activeBottomRight - activeTopLeft;
++        const hlslpp::float2 activeCenter = (activeTopLeft + activeBottomRight) / 2;
++        const hlslpp::float2 windowCenter = windowSize / 2;
++        const float relativeScale = std::max(windowSize.x / activeSize.x, windowSize.y / activeSize.y);
++        return windowCenter + (coordinate - activeCenter) * relativeScale;
++    }
++
+     void VIRenderer::render(const RenderParams &p) {
+         const ShaderRecord *shader = nullptr;
+         const RenderSampler *sampler = nullptr;
+@@ -70,7 +80,7 @@ namespace RT64 {
+         RenderViewport viewport;
+         RenderRect scissor;
+         hlslpp::float2 fbHdRegion;
+-        getViewportAndScissor(p.swapChain, *p.vi, p.resolutionScale, p.downsamplingScale, viewport, scissor, fbHdRegion);
++        getViewportAndScissor(p.swapChain, *p.vi, p.resolutionScale, p.downsamplingScale, p.fillActiveArea, viewport, scissor, fbHdRegion);
+         p.commandList->setViewports(viewport);
+         p.commandList->setScissors(scissor);
+ 
+@@ -87,7 +97,7 @@ namespace RT64 {
+         p.commandList->drawInstanced(3, 1, 0, 0);
+     }
+ 
+-    void VIRenderer::getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, RenderViewport &viewport, RenderRect &scissor, hlslpp::float2 &fbHdRegion) {
++    void VIRenderer::getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool fillActiveArea, RenderViewport &viewport, RenderRect &scissor, hlslpp::float2 &fbHdRegion) {
+         // We define three different coordinate spaces to work with to translate the VI parameters into the Window.
+         //
+         // VideoSD: This corresponds to the SD TV Scanline space, which is what the VI natively works on.
+@@ -114,15 +124,31 @@ namespace RT64 {
+         RectI viCropRect = vi.cropRectangle();
+         hlslpp::float2 topLeftViewport = fromSDtoHD({ float(viViewRect.x), float(viViewRect.y) }, sdSize, hdSize);
+         hlslpp::float2 bottomRightViewport = fromSDtoHD({ float(viViewRect.x + viViewRect.w), float(viViewRect.y + viViewRect.h) }, sdSize, hdSize);
+-        topLeftViewport = fromHDtoWindow(topLeftViewport, hdSize, windowSize);
+-        bottomRightViewport = fromHDtoWindow(bottomRightViewport, hdSize, windowSize);
+ 
+         hlslpp::float2 topLeftScissor = fromSDtoHD({ float(viCropRect.x), float(viCropRect.y) }, sdSize, hdSize);
+         hlslpp::float2 bottomRightScissor = fromSDtoHD({ float(viCropRect.x + viCropRect.w), float(viCropRect.y + viCropRect.h) }, sdSize, hdSize);
+-        topLeftScissor = fromHDtoWindow(topLeftScissor, hdSize, windowSize);
+-        bottomRightScissor = fromHDtoWindow(bottomRightScissor, hdSize, windowSize);
++        if (fillActiveArea && (viViewRect.w > 0) && (viViewRect.h > 0)) {
++            const hlslpp::float2 activeTopLeft = topLeftViewport;
++            const hlslpp::float2 activeBottomRight = bottomRightViewport;
++            topLeftViewport = fromActiveHDtoWindow(topLeftViewport, activeTopLeft, activeBottomRight, windowSize);
++            bottomRightViewport = fromActiveHDtoWindow(bottomRightViewport, activeTopLeft, activeBottomRight, windowSize);
++            topLeftScissor = fromActiveHDtoWindow(topLeftScissor, activeTopLeft, activeBottomRight, windowSize);
++            bottomRightScissor = fromActiveHDtoWindow(bottomRightScissor, activeTopLeft, activeBottomRight, windowSize);
++        }
++        else {
++            topLeftViewport = fromHDtoWindow(topLeftViewport, hdSize, windowSize);
++            bottomRightViewport = fromHDtoWindow(bottomRightViewport, hdSize, windowSize);
++            topLeftScissor = fromHDtoWindow(topLeftScissor, hdSize, windowSize);
++            bottomRightScissor = fromHDtoWindow(bottomRightScissor, hdSize, windowSize);
++        }
+ 
+         viewport = RenderViewport(topLeftViewport.x, topLeftViewport.y, bottomRightViewport.x - topLeftViewport.x, bottomRightViewport.y - topLeftViewport.y);
+-        scissor = RenderRect(lround(topLeftScissor.x), lround(topLeftScissor.y), lround(bottomRightScissor.x), lround(bottomRightScissor.y));
++        const int32_t windowWidth = static_cast<int32_t>(swapChain->getWidth());
++        const int32_t windowHeight = static_cast<int32_t>(swapChain->getHeight());
++        scissor = RenderRect(
++            std::clamp<int32_t>(lround(topLeftScissor.x), 0, windowWidth),
++            std::clamp<int32_t>(lround(topLeftScissor.y), 0, windowHeight),
++            std::clamp<int32_t>(lround(bottomRightScissor.x), 0, windowWidth),
++            std::clamp<int32_t>(lround(bottomRightScissor.y), 0, windowHeight));
+     }
+-};
+\ No newline at end of file
++};
+diff --git a/lib/rt64/src/render/rt64_vi_renderer.h b/lib/rt64/src/render/rt64_vi_renderer.h
+index 9e83151..daaefc3 100644
+--- a/lib/rt64/src/render/rt64_vi_renderer.h
++++ b/lib/rt64/src/render/rt64_vi_renderer.h
+@@ -27,12 +27,13 @@ namespace RT64 {
+             uint32_t textureWidth = 0;
+             uint32_t textureHeight = 0;
+             UserConfiguration::Filtering filtering = UserConfiguration::Filtering::Linear;
++            bool fillActiveArea = false;
+             const VI *vi = nullptr;
+         };
+ 
+         VIRenderer();
+         ~VIRenderer();
+         void render(const RenderParams &p);
+-        static void getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, RenderViewport &viewport, RenderRect &scissor, hlslpp::float2 &fbHdRegion);
++        static void getViewportAndScissor(const RenderSwapChain *swapChain, const VI &vi, hlslpp::float2 resolutionScale, uint32_t downsamplingScale, bool fillActiveArea, RenderViewport &viewport, RenderRect &scissor, hlslpp::float2 &fbHdRegion);
+     };
+-};
+\ No newline at end of file
++};
+

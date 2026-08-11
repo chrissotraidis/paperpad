@@ -1,0 +1,13 @@
+diff --git a/lib/rt64/src/metal/rt64_metal.cpp b/lib/rt64/src/metal/rt64_metal.cpp
+--- a/lib/rt64/src/metal/rt64_metal.cpp
++++ b/lib/rt64/src/metal/rt64_metal.cpp
+@@ -1736,7 +1736,9 @@ namespace RT64 {
+     }
+ 
+     MetalSwapChain::~MetalSwapChain() {
++#if !TARGET_OS_IPHONE
+         layer->release();
++#endif
+     }
+ 
+     bool MetalSwapChain::present(const uint32_t textureIndex, RenderCommandSemaphore **waitSemaphores, const uint32_t waitSemaphoreCount) {

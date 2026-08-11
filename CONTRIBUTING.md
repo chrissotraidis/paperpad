@@ -10,9 +10,9 @@ Before opening an issue, search existing reports and include:
 - steps to reproduce and the expected and actual result; and
 - relevant non-sensitive logs or screenshots.
 
-On iPhone or iPad, use **PaperPad Menu > Settings > Share Diagnostics…** to create the bounded current-session report. Review and redact it before attaching it: known container/home/temporary paths are replaced, but the report is not guaranteed to remove every private string emitted at runtime.
+On iPhone or iPad, use **PaperPad Menu > Share Diagnostics & Logs…** after reproducing the problem. The report contains bounded tails from the current session and, when available, the previous session; a previous unclean session is labeled as a possibility, not definitive proof of an app crash. Review and redact it before attaching it: known container/home/temporary paths are replaced, but arbitrary runtime text can still contain private material.
 
-Never attach, request, link to, or commit ROMs, extracted game assets, generated playable source or archives, saves, certificates, provisioning profiles, private keys, credentials, or private device data.
+Never attach, request, link to, or commit ROMs, extracted game assets, generated playable source or archives, saves, raw PCM captures, certificates, provisioning profiles, private keys, credentials, or private device data.
 
 For a change:
 

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cassert>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cctype>
@@ -42,6 +43,10 @@ namespace {
     unsigned int DPC_BUFBUSY_REG = 0;
     unsigned int DPC_PIPEBUSY_REG = 0;
     unsigned int DPC_TMEM_REG = 0;
+
+    std::atomic<uint32_t> effective_scale_milli{0};
+    std::atomic<uint32_t> effective_internal_width{0};
+    std::atomic<uint32_t> effective_internal_height{0};
 
     void check_interrupts() {
     }
@@ -83,6 +88,30 @@ namespace {
         case ultramodern::renderer::Resolution::Auto:
         default:
             return RT64::UserConfiguration::Resolution::WindowIntegerScale;
+        }
+    }
+
+    RT64::UserConfiguration::Filtering to_rt64(ultramodern::renderer::TextureFiltering option) {
+        switch (option) {
+        case ultramodern::renderer::TextureFiltering::Nearest:
+            return RT64::UserConfiguration::Filtering::Nearest;
+        case ultramodern::renderer::TextureFiltering::Linear:
+            return RT64::UserConfiguration::Filtering::Linear;
+        case ultramodern::renderer::TextureFiltering::PixelScaling:
+        default:
+            return RT64::UserConfiguration::Filtering::AntiAliasedPixelScaling;
+        }
+    }
+
+    RT64::UserConfiguration::Upscale2D to_rt64(ultramodern::renderer::Upscale2D option) {
+        switch (option) {
+        case ultramodern::renderer::Upscale2D::Original:
+            return RT64::UserConfiguration::Upscale2D::Original;
+        case ultramodern::renderer::Upscale2D::All:
+            return RT64::UserConfiguration::Upscale2D::All;
+        case ultramodern::renderer::Upscale2D::ScaledOnly:
+        default:
+            return RT64::UserConfiguration::Upscale2D::ScaledOnly;
         }
     }
 
@@ -167,12 +196,19 @@ namespace {
             ? 2.0
             : std::clamp(config.resolution_multiplier, 1.0, 32.0);
         app->userConfig.downsampleMultiplier = std::clamp(config.ds_option, 1, 32);
+        // Paper Mario projects battle actors in RT64 while its targeting hand
+        // is positioned by game-side 4:3 screen-coordinate math. RT64's
+        // expanded projection therefore separates the hand from its target.
+        // Keep both drawing paths at the original projection and implement the
+        // optional Fill Screen choice only in the final VI presentation.
+        app->userConfig.aspectRatio = RT64::UserConfiguration::AspectRatio::Original;
         app->userConfig.extAspectRatio = RT64::UserConfiguration::AspectRatio::Original;
-        app->userConfig.aspectRatio = to_rt64(config.ar_option);
+        app->userConfig.fillActiveArea =
+            config.ar_option == ultramodern::renderer::AspectRatio::Expand;
         app->userConfig.antialiasing = to_rt64(config.msaa_option);
-        app->userConfig.filtering = RT64::UserConfiguration::Filtering::AntiAliasedPixelScaling;
-        app->userConfig.upscale2D = RT64::UserConfiguration::Upscale2D::ScaledOnly;
-        app->userConfig.threePointFiltering = true;
+        app->userConfig.filtering = to_rt64(config.filtering_option);
+        app->userConfig.upscale2D = to_rt64(config.upscale_2d);
+        app->userConfig.threePointFiltering = config.three_point_filtering;
         app->userConfig.displayBuffering = RT64::UserConfiguration::DisplayBuffering::Triple;
         app->userConfig.hardwareResolve = RT64::UserConfiguration::HardwareResolve::Automatic;
         // PaperPad must not pace Paper Mario from the desktop monitor mode. The
@@ -308,13 +344,20 @@ namespace {
                 (new_config.ar_option != old_config.ar_option) ||
                 (new_config.msaa_option != old_config.msaa_option) ||
                 (new_config.hpfb_option != old_config.hpfb_option) ||
-                (new_config.ds_option != old_config.ds_option);
+                (new_config.ds_option != old_config.ds_option) ||
+                (new_config.upscale_2d != old_config.upscale_2d) ||
+                (new_config.three_point_filtering != old_config.three_point_filtering);
             app->updateUserConfig(discard_fbs);
             std::fprintf(stderr,
-                "[render] config updated resolution=%d multiplier=%.2f aspect=%d discard=%d\n",
+                "[render] config updated resolution=%d multiplier=%.2f aspect=%d "
+                "fill=%d filter=%d upscale2d=%d three_point=%d discard=%d\n",
                 static_cast<int>(app->userConfig.resolution),
                 app->userConfig.resolutionMultiplier,
                 static_cast<int>(app->userConfig.aspectRatio),
+                app->userConfig.fillActiveArea ? 1 : 0,
+                static_cast<int>(app->userConfig.filtering),
+                static_cast<int>(app->userConfig.upscale2D),
+                app->userConfig.threePointFiltering ? 1 : 0,
                 discard_fbs ? 1 : 0);
             if (new_config.msaa_option != old_config.msaa_option) {
                 app->updateMultisampling();
@@ -374,6 +417,26 @@ namespace {
             RT64::AppleAutoreleasePoolMarker screenPool;
 #endif
             app->updateScreen();
+            const auto* resources = app->sharedQueueResources.get();
+            if (resources != nullptr) {
+                const RT64::VI vi = app->core.decodeVI();
+                const hlslpp::uint2 framebuffer = vi.fbSize();
+                const float scaleX = std::max(
+                    static_cast<float>(resources->resolutionScale.x), 1.0f);
+                const float scaleY = std::max(
+                    static_cast<float>(resources->resolutionScale.y), 1.0f);
+                const uint32_t framebufferWidth = static_cast<uint32_t>(framebuffer.x);
+                const uint32_t framebufferHeight = static_cast<uint32_t>(framebuffer.y);
+                effective_scale_milli.store(
+                    static_cast<uint32_t>(std::lround(scaleY * 1000.0f)),
+                    std::memory_order_release);
+                effective_internal_width.store(
+                    static_cast<uint32_t>(std::lround(framebufferWidth * scaleX)),
+                    std::memory_order_release);
+                effective_internal_height.store(
+                    static_cast<uint32_t>(std::lround(framebufferHeight * scaleY)),
+                    std::memory_order_release);
+            }
         }
 
         void shutdown() override {
@@ -477,6 +540,19 @@ extern "C" int paperpad_dump_render_state(void) {
     }
     fprintf(stderr, "[render] probe context not registered\n");
     return 0;
+}
+
+extern "C" int PaperPad_GetEffectiveRenderState(uint32_t* scale_milli,
+                                                  uint32_t* internal_width,
+                                                  uint32_t* internal_height) {
+    const uint32_t scale = effective_scale_milli.load(std::memory_order_acquire);
+    const uint32_t width = effective_internal_width.load(std::memory_order_acquire);
+    const uint32_t height = effective_internal_height.load(std::memory_order_acquire);
+    if (scale == 0 || width == 0 || height == 0) return 0;
+    if (scale_milli != nullptr) *scale_milli = scale;
+    if (internal_width != nullptr) *internal_width = width;
+    if (internal_height != nullptr) *internal_height = height;
+    return 1;
 }
 
 std::unique_ptr<ultramodern::renderer::RendererContext> paper_mario::renderer::create_render_context(

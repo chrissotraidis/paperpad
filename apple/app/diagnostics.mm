@@ -3,6 +3,8 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 
+#include "paperpad_input.h"
+
 #include <cerrno>
 #include <cstdio>
 #include <fcntl.h>
@@ -20,6 +22,18 @@ NSURL* diagnosticsDirectory(NSURL* root) {
 
 NSURL* runtimeLogURL(NSURL* root) {
     return [diagnosticsDirectory(root) URLByAppendingPathComponent:@"paperpad-latest.log"];
+}
+
+NSURL* previousRuntimeLogURL(NSURL* root) {
+    return [diagnosticsDirectory(root) URLByAppendingPathComponent:@"paperpad-previous.log"];
+}
+
+NSURL* activeSessionMarkerURL(NSURL* root) {
+    return [diagnosticsDirectory(root) URLByAppendingPathComponent:@"paperpad-session-active"];
+}
+
+NSURL* previousSessionUncleanMarkerURL(NSURL* root) {
+    return [diagnosticsDirectory(root) URLByAppendingPathComponent:@"paperpad-previous-unclean"];
 }
 
 NSURL* applicationSupportRoot() {
@@ -66,18 +80,18 @@ NSString* decodedUTF8String(NSData* data) {
 #endif
 }
 
-NSString* sanitizedLogTail(NSURL* root) {
+NSString* sanitizedLogTail(NSURL* root, NSURL* logURL, NSString* unavailableMessage) {
     NSError* error = nil;
-    NSFileHandle* handle = [NSFileHandle fileHandleForReadingFromURL:runtimeLogURL(root)
+    NSFileHandle* handle = [NSFileHandle fileHandleForReadingFromURL:logURL
                                                                error:&error];
-    if (handle == nil) return @"No current-session runtime log was available.";
+    if (handle == nil) return unavailableMessage;
     const unsigned long long length = [handle seekToEndOfFile];
     const unsigned long long offset = length > kMaximumSharedLogBytes
         ? length - kMaximumSharedLogBytes : 0;
     [handle seekToFileOffset:offset];
     NSData* data = [handle readDataOfLength:kMaximumSharedLogBytes];
     [handle closeFile];
-    if (data.length == 0) return @"No current-session runtime log was available.";
+    if (data.length == 0) return unavailableMessage;
     NSString* log = decodedUTF8String(data);
     // A tail read can start inside a multi-byte character. Runtime output is
     // normally ASCII, but skip at most three leading bytes if needed.
@@ -85,7 +99,7 @@ NSString* sanitizedLogTail(NSURL* root) {
         NSData* trimmed = [data subdataWithRange:NSMakeRange(skip, data.length - skip)];
         log = decodedUTF8String(trimmed);
     }
-    if (log == nil) return @"The current-session runtime log could not be decoded as UTF-8.";
+    if (log == nil) return @"The runtime log could not be decoded as UTF-8.";
 
     NSMutableString* sanitized = [log mutableCopy];
 #if !__has_feature(objc_arc)
@@ -139,8 +153,19 @@ NSString* diagnosticReport(NSURL* root) {
         bounds.size.width, bounds.size.height, screen.nativeScale];
     [report appendFormat:@"ROM installed: %@\n", yesNo(supportedROMInstalled)];
     [report appendFormat:@"Resolution: %@\n", resolutionName(resolution)];
+    uint32_t effectiveScaleMilli = 0;
+    uint32_t internalWidth = 0;
+    uint32_t internalHeight = 0;
+    if (PaperPad_GetEffectiveRenderState(
+            &effectiveScaleMilli, &internalWidth, &internalHeight)) {
+        [report appendFormat:@"Renderer-confirmed: %.2fx, %ux%u internal\n",
+            effectiveScaleMilli / 1000.0, internalWidth, internalHeight];
+    } else {
+        [report appendString:@"Renderer-confirmed: not available yet\n"];
+    }
     [report appendFormat:@"Aspect ratio: %@\n",
-        [settings[@"aspect"] integerValue] == 1 ? @"Expand" : @"Original (4:3)"];
+        [settings[@"aspect"] integerValue] == 1 ? @"Fill Screen" : @"Original (4:3)"];
+    [report appendString:@"Image filter: Smooth (fixed)\n"];
     [report appendFormat:@"Touch controls: %@\n",
         yesNo(settings[@"touchControls"] == nil || [settings[@"touchControls"] boolValue])];
     const double opacity = settings[@"touchOpacity"] == nil
@@ -148,10 +173,32 @@ NSString* diagnosticReport(NSURL* root) {
     [report appendFormat:@"Touch opacity: %.0f%%\n", opacity * 100.0];
     [report appendString:@"\nPrivacy note: this report excludes ROM and save contents. "];
     [report appendString:@"Review runtime text before choosing a share destination.\n\n"];
-    [report appendString:@"Current-session runtime log (bounded to the last 512 KiB)\n"];
-    [report appendString:@"----------------------------------------------------------\n"];
-    [report appendString:sanitizedLogTail(root)];
+    const BOOL previousMayBeUnclean = [NSFileManager.defaultManager
+        fileExistsAtPath:previousSessionUncleanMarkerURL(root).path];
+    if (previousMayBeUnclean) {
+        [report appendString:@"Previous-session runtime log (possible crash; last 512 KiB)\n"];
+        [report appendString:@"--------------------------------------------------------------\n"];
+        [report appendString:sanitizedLogTail(
+            root, previousRuntimeLogURL(root), @"No previous-session runtime log was available.")];
+        [report appendString:@"\n\n"];
+    }
+    [report appendString:@"Current-session runtime log (last 512 KiB)\n"];
+    [report appendString:@"----------------------------------------------\n"];
+    [report appendString:sanitizedLogTail(
+        root, runtimeLogURL(root), @"No current-session runtime log was available.")];
+    if (!previousMayBeUnclean) {
+        [report appendString:@"\n\nPrevious-session runtime log (last 512 KiB)\n"];
+        [report appendString:@"-----------------------------------------------\n"];
+        [report appendString:sanitizedLogTail(
+            root, previousRuntimeLogURL(root), @"No previous-session runtime log was available.")];
+    }
     return report;
+}
+
+void createPrivateMarker(NSURL* marker) {
+    const int descriptor = open(marker.fileSystemRepresentation,
+                                O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (descriptor >= 0) close(descriptor);
 }
 
 } // namespace
@@ -173,7 +220,26 @@ void paperpad_start_diagnostics_log(void* application_support_root) {
     }
     [directory setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
 
-    const int logDescriptor = open(runtimeLogURL(root).fileSystemRepresentation,
+    NSFileManager* files = NSFileManager.defaultManager;
+    NSURL* latest = runtimeLogURL(root);
+    NSURL* previous = previousRuntimeLogURL(root);
+    NSURL* activeMarker = activeSessionMarkerURL(root);
+    NSURL* uncleanMarker = previousSessionUncleanMarkerURL(root);
+    const BOOL hadLatest = [files fileExistsAtPath:latest.path];
+    const BOOL previousSessionMayBeUnclean = hadLatest &&
+        [files fileExistsAtPath:activeMarker.path];
+
+    [files removeItemAtURL:previous error:nil];
+    if (hadLatest && ![files moveItemAtURL:latest toURL:previous error:&error]) {
+        std::fprintf(stderr, "[PaperPad] previous diagnostics log could not be rotated: %s\n",
+                     error.localizedDescription.UTF8String);
+    }
+    [files removeItemAtURL:uncleanMarker error:nil];
+    if (previousSessionMayBeUnclean) createPrivateMarker(uncleanMarker);
+    [files removeItemAtURL:activeMarker error:nil];
+    createPrivateMarker(activeMarker);
+
+    const int logDescriptor = open(latest.fileSystemRepresentation,
                                    O_WRONLY | O_CREAT | O_TRUNC, 0600);
     int pipeDescriptors[2] = {-1, -1};
     const int originalStderr = dup(STDERR_FILENO);
@@ -218,6 +284,13 @@ void paperpad_start_diagnostics_log(void* application_support_root) {
     }).detach();
 
     std::fprintf(stderr, "[PaperPad] private current-session diagnostics log started\n");
+}
+
+void paperpad_finish_diagnostics_log(void* application_support_root) {
+    NSURL* root = (__bridge NSURL*)application_support_root;
+    if (root == nil) return;
+    std::fprintf(stderr, "[PaperPad] clean process exit reached\n");
+    [NSFileManager.defaultManager removeItemAtURL:activeSessionMarkerURL(root) error:nil];
 }
 
 void paperpad_present_diagnostics_share(void* presenter_pointer,

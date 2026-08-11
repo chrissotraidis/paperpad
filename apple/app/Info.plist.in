@@ -24,6 +24,8 @@
     <string>@PAPERPAD_BUILD_PROFILE@</string>
     <key>GCSupportedGameControllers</key>
     <array><dict><key>ProfileName</key><string>ExtendedGamepad</string></dict></array>
+    <key>GCSupportsControllerUserInteraction</key>
+    <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
     <key>LSRequiresIPhoneOS</key>

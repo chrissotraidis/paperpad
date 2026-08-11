@@ -24,27 +24,32 @@ This repository contains integration source, patches, scripts, and documentation
 
 ## Availability
 
-There are currently no signed, notarized, TestFlight, App Store, or prebuilt public downloads. The table describes source builds verified from this repository through 2026-08-10.
+There are currently no signed, notarized, TestFlight, App Store, or prebuilt public downloads. The table describes source builds verified from this repository through 2026-08-11.
 
 | Target | Status | Acceptance exercised |
 |---|---|---|
 | Apple Silicon macOS | **Verified source build** | Clean app build, launch, intro, file creation, and early gameplay |
-| iPhone Simulator | **Verified source build** | Clean first-run UI, title/file entry by touch, Auto plus 1x–4x rendering, diagnostics sharing, and clean terminate |
-| iPad Simulator | **Verified source build** | Title through file creation and the Mario's House prologue, 4x persistence, diagnostics sharing, and Retina framing |
-| Physical iPad | **Development startup verified** | Final ROM-free signed arm64 build launched with a validated private ROM on an iPad Pro 12.9-inch (6th generation), iPadOS 26.5.2; native Metal and recompiled-game initialization passed |
+| iPhone Simulator | **Current source build verified** | Current audio telemetry, live Auto status, diagnostics/modal restoration, compact landscape framing, and earlier touch-driven title/file flow plus 1x–4x evidence |
+| iPad Simulator | **Current source build verified** | Stateful audio conversion, crash-log rotation, live Auto status, first-level diagnostics, modal touch restoration, borderless Retina framing, and the previously verified opening route |
+| Physical iPad | **Corrected iteration installed; release blocked on progression and audio** | The signed 2026-08-11 replacement installed and launched in place on an iPad Pro 12.9-inch (6th generation), iPadOS 26.5.2, preserving the exact merged save. Hands-on testing then encountered a Goomba Village gate-unlock freeze that left Mario input-locked and NPCs idle. Audible synthesis crackle also remains release-blocking |
 | Physical iPhone | **Not yet verified** | No current signed build, install, or on-device playtest evidence |
 | TestFlight / App Store | **Not announced** | Distribution rights, signing, packaging, and store review remain outside the verified scope |
 
 An iPad-only follow-up on 2026-08-10 reproduced the reported File 1A crash,
-transition shudder, and clipped-audio conditions. The retained fix removed the
-runaway Simulator Metal allocation growth, corrected the PCM overlap offset,
-and kept File 1A through Mario's House stable at 4x. The final idle comparison
-held at 255 VM allocation regions and about 124–127 MiB physical footprint;
-no CoreAudio overload or new crash report appeared. Audible quality still
-needs human listening acceptance, and the final stability changes have not
-yet been re-run on iPhone Simulator.
+transition shudder, and clipped-audio conditions. The retained renderer fix
+removed runaway Simulator Metal allocation growth and kept File 1A through
+Mario's House stable at 4x. On 2026-08-11, a bounded PCM comparison isolated a
+second audio defect: the block-by-block resampler introduced high-frequency
+energy and discontinuities that were absent from the emulator source. PaperPad
+now uses a continuous SDL audio stream; captured Simulator output matches the
+source spectrum. The installed physical build also logged 190 structural audio
+windows with a 60.75 ms maximum queue and no conversion, queue, or over-100 ms
+event. Hands-on listening subsequently confirmed that a smaller audible
+crackle remains. That separates the fixed host resampler defect from the open
+HLE N64 sound-synthesis defect; it is not evidence that the audio is
+release-ready.
 
-PaperPad is a source release candidate, not a claim that every chapter or physical-device configuration has completed acceptance. The physical iPad evidence currently stops after private-ROM validation, native Metal setup, and recompiled-game initialization; it is not a hands-on gameplay or audiovisual pass. See [docs/STATUS.md](docs/STATUS.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the exact boundary.
+PaperPad is a source release candidate, not a claim that every chapter or physical-device configuration has completed acceptance. A prior physical-iPad build exposed the audio/control issues tracked here. The signed 2026-08-11 fixes are now installed and running on that iPad, but installation/process evidence does not replace hands-on audible, touch, visual, or lifecycle acceptance. See [docs/STATUS.md](docs/STATUS.md) and [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the exact boundary.
 
 ## Get started
 
@@ -121,16 +126,17 @@ The overlay provides an analog stick, D-pad, A/B/Z, C-buttons, L/R, and Start. `
 
 - master volume;
 - Automatic, 1x, 2x, 3x, or 4x internal rendering resolution;
-- original 4:3 or expanded aspect ratio;
+- Original (4:3) or Fill Screen framing;
 - touch-control visibility and opacity;
 - touch-layout editing and reset;
-- a privacy-bounded diagnostics report and current-session log share sheet; and
+- live renderer-confirmed scale/internal dimensions for the selected resolution;
+- first-level and Settings access to a privacy-bounded diagnostics report with current and previous-session logs; and
 - private ROM replacement/removal.
 
-Touch visibility, opacity, layout, resolution, aspect ratio, and volume persist locally. The game remains framed at its original 4:3 aspect ratio by default.
-Opening PaperPad's menu or settings clears held input and hides gameplay touch targets until dismissal. `Share Diagnostics…` creates a text report with app, system, screen, and settings metadata; whether a supported-size ROM is installed; and at most the last 512 KiB of the current-session runtime log. It never attaches ROM or save contents. Known app-container, home, and temporary paths are replaced, but review the report before choosing a share destination.
+Touch visibility, opacity, layout, resolution, aspect ratio, and volume persist locally. Auto may report a scale above the manual 4x ceiling because it selects the largest integer scale that fits the current screen. Original preserves centered 4:3 framing. Fill Screen center-crops the completed 4:3 presentation, so actors and game HUD remain in the same coordinate system; it can crop image edges, especially on wider displays. Smooth filtering is fixed. The physically rejected Crisp 2D experiment was removed because it made the image harsher without reconstructing missing glyph or texture detail.
+Opening PaperPad's menu, Settings, share sheet, or ROM sheet clears held input and hides every gameplay touch target until dismissal. `Share Diagnostics & Logs…` creates a text report with app, system, screen, settings, and renderer-confirmed resolution metadata; whether a supported-size ROM is installed; and at most the last 512 KiB of both the current and previous runtime logs. A leftover session marker makes a possible-crash log appear first after relaunch. Each private log is capped at 4 MiB. The report never attaches ROM or save contents. Known app-container, home, and temporary paths are replaced, but runtime text is not guaranteed to be anonymous: review it before choosing a share destination.
 
-The phone/tablet layout, persistent menu, modal input lifecycle, and customization model are adapted from [HarkinianPad](https://github.com/chrissotraidis/harkinianpad). PaperPad keeps its own direct N64 input bridge and does not claim feature parity; controller-driven touch auto-hide is still open.
+The phone/tablet layout, persistent menu, modal input lifecycle, and customization model are adapted from [HarkinianPad](https://github.com/chrissotraidis/harkinianpad). PaperPad keeps its own direct N64 input bridge and does not claim feature parity. The installed iOS build hides gameplay touch controls while a hardware controller is connected and restores them on disconnect; physical controller acceptance remains open.
 
 ## What works
 
@@ -138,7 +144,7 @@ The phone/tablet layout, persistent menu, modal input lifecycle, and customizati
 - Direct Metal rendering through the ReCut-vendored RT64 and N64ModernRuntime trees
 - HLE NAUDIO processing through pinned `mupen64plus-rsp-hle`
 - Keyboard and SDL controller input on macOS
-- Multi-touch N64 controls, fixed visible stick, broad floating-stick pickup area, layout editing, opacity, and enable/disable controls on iPhone/iPad
+- Multi-touch N64 controls, a fixed/clamped visible stick with a broad pickup area, a precision response curve with cardinal-direction bias, layout editing, opacity, and enable/disable controls on iPhone/iPad
 - iPhone and iPad native-window support with Retina pixel sizing, safe-area layout, rotation recovery, and original-aspect framing
 - Native first-run ROM selection, byte-order normalization, exact revision validation, private storage, and ROM management
 - Flash save handling and clean RT64 worker teardown fixes maintained as source patches
@@ -146,12 +152,13 @@ The phone/tablet layout, persistent menu, modal input lifecycle, and customizati
 
 ## Current limits
 
-- A physical iPad development build now passes signing, install, validated private-ROM startup, native Metal setup, and recompiled-game initialization. The native document-picker route, hands-on visuals, touch gameplay, audible audio, interruption handling, thermal behavior, and long-session acceptance remain unverified on hardware; physical iPhone remains untested.
+- The current physical-iPad development build passes signing, in-place install, launch, and live-process checks, but the Goomba Village gate-unlock sequence can leave Mario input-locked while NPCs remain idle. This P0 progression failure must be reproduced and fixed before the exercised route is considered playable. The continuous resampler removed one measured conversion defect, but audible crackle also remains in the HLE N64 sound-synthesis path. Physical iPhone remains untested.
 - The current playtest covers the opening flow and early gameplay, not a complete game playthrough.
-- Touch controls do not yet auto-hide when a hardware controller connects, and PaperPad does not yet implement HarkinianPad's hold-to-latch Z gesture.
+- Controller-driven touch auto-hide is implemented but not yet accepted on physical hardware. PaperPad does not yet implement HarkinianPad's hold-to-latch Z gesture.
 - The persistent menu and native setup/settings controls are accessibility-labeled; the custom-drawn gameplay buttons are not yet exposed as individual VoiceOver elements.
 - The iOS launch log can report an unbalanced UIKit appearance-transition warning, and Simulator can report a duplicate accessibility-class warning. Neither blocked the verified session, but both remain cleanup items.
 - RT64 logs `RenderPool in Metal is not implemented currently`; the tested rendering path continues without a crash.
+- Internal resolution improves geometry edges and sampling but cannot recreate detail in original low-resolution text, sprites, or textures. PaperPad uses RT64's stable smooth path; its removed Crisp 2D experiment made those source assets look worse. RT64 supports user-supplied texture replacement in principle, but PaperPad does not ship, endorse, or validate a Paper Mario HD pack, and no third-party game assets are bundled.
 
 Report a reproducible regression with the platform, device/OS, PaperPad commit, build command, expected and actual behavior, and non-sensitive logs. Never attach or request ROMs, extracted assets, saves, signing files, or credentials.
 
@@ -166,36 +173,30 @@ No. PaperPad is ROM-free and accepts only a user-supplied, legally obtained Pape
 <details>
 <summary><strong>Are physical iPhone and iPad builds verified?</strong></summary>
 
-Partially. A ROM-free development build was signed and installed on an iPad Pro 12.9-inch (6th generation) running iPadOS 26.5.2. With a separately stored, validated private ROM, it completed native 2732×2048 Metal setup, recomp-heap initialization, and the game-loop hook. That is not a gameplay pass: the native document picker, visuals, touch input, audible audio, interruption handling, thermal behavior, and long play still require hands-on device acceptance. Physical iPhone remains unverified.
+Partially. A ROM/save-free development build containing the current 2026-08-11 iteration was signed, installed in place, launched, and observed running on an iPad Pro 12.9-inch (6th generation) running iPadOS 26.5.2. Simulator checks and process evidence cover the implementation path, but the current device build still requires hands-on listening, touch, visual, and lifecycle acceptance. Physical iPhone remains unverified.
 </details>
 
 <details>
 <summary><strong>What is the controller and audio boundary?</strong></summary>
 
-macOS maps SDL-compatible controllers and PaperPad's HLE audio path reaches the runtime audio queue. Audible output, interruptions, controller hot-plug behavior, and touch auto-hide still require physical iPhone/iPad acceptance.
+macOS and iOS map SDL-compatible controllers, and the iOS build hides the touch overlay while a controller is connected. PaperPad's HLE audio path reaches the runtime audio queue. Audible output, interruptions, controller mapping/hot-plug, and overlay restoration still require physical iPhone/iPad acceptance.
 </details>
 
 <details>
 <summary><strong>How should I report a problem?</strong></summary>
 
-Open `PaperPad Menu` → `Settings` → `Share Diagnostics…`, review the generated text, and attach it only if it contains nothing private. Include exact reproduction steps and a screenshot when the issue is visual. See [CONTRIBUTING.md](CONTRIBUTING.md).
+Open `PaperPad Menu` → `Share Diagnostics & Logs…`, review the generated text, and attach it only if it contains nothing private. After a suspected crash, relaunch once and the report places the bounded previous-session log first. Include exact reproduction steps and a screenshot when the issue is visual. See [CONTRIBUTING.md](CONTRIBUTING.md).
 </details>
 
 ## Visual verification
 
-PaperPad's presentation was checked against archived original-game captures for theater geometry, 4:3 composition, palette, curtain and checkerboard staging, text treatment, and early-game layering.
+The public page keeps only the strongest current captures; the larger engineering set remains in [`docs/release-audit/`](docs/release-audit/).
 
-| Current iPad settings | Current iPhone touch flow |
+| Last accepted iPad Settings baseline | Current iPhone touch layout |
 |---|---|
-| ![PaperPad iPad settings with Auto and 1x through 4x](docs/release-audit/15-paperpad-ios-resolution-diagnostics-settings.png) | ![PaperPad iPhone file entry using touch controls](docs/release-audit/20-paperpad-iphone-final-touch-file-entry.png) |
+| ![Historical PaperPad iPad Settings baseline showing live Auto 9x; the pictured experimental image-filter control was removed after physical rejection](docs/release-audit/26-paperpad-ipad-image-filter-settings-2026-08-11.jpg) | ![PaperPad iPhone gameplay with separated compact touch controls](docs/release-audit/25-paperpad-iphone-controls-separated-2026-08-11.jpg) |
 
-| PaperPad | Original reference |
-|---|---|
-| ![PaperPad macOS opening scene](docs/release-audit/03-paperpad-macos-prologue.png) | ![Original Paper Mario Star Haven scene](docs/release-audit/reference/original-star-haven.jpg) |
-| ![PaperPad macOS file select](docs/release-audit/05-paperpad-macos-file-select.png) | ![Original Paper Mario file select](docs/release-audit/reference/nintendo-file-select.gif) |
-| ![PaperPad macOS early gameplay](docs/release-audit/06-paperpad-macos-gameplay.png) | ![Original Paper Mario early overworld](docs/release-audit/reference/nintendo-overworld.gif) |
-
-Primary layout/color references: [Nintendo's archived file-select guide](https://www.nintendo.co.jp/wii/vc/vc_ms/vc_ms_03.html) and [Nintendo's archived early-game guide](https://www.nintendo.co.jp/wii/vc/vc_ms/vc_ms_01.html). The opening-scene comparison uses a secondary [Paper Mario LP capture](https://darkdata.rustedlogic.net/ran/File_Dump_SystemLogoff/Paper_Mario_LP/Prologue.html).
+Archived comparison references include [Nintendo's file-select guide](https://www.nintendo.co.jp/wii/vc/vc_ms/vc_ms_03.html) and [Nintendo's early-game guide](https://www.nintendo.co.jp/wii/vc/vc_ms/vc_ms_01.html). These support composition/palette review; they do not claim pixel-identical rendering.
 
 ## Reproducibility and repository safety
 
