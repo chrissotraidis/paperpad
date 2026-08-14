@@ -34,7 +34,7 @@ PaperPad `v0.1.0-preview.1` is the first public iPhone and iPad preview. The rel
 | Physical iPhone | Current clean build installed and launched; private test ROM/save migrated, with hands-on touch and gameplay acceptance open |
 | Public binary distribution | [ROM-free unsigned Preview 1](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1); self-signing required |
 
-Current device testing covers early battles, a 16-minute Kishi V2 session, and one clean instrumented replay of the intermittently delayed Goompa return route. Two more targeted progression replays, longer listening, complete controller mapping/reconnect, physical-iPhone hands-on acceptance, and chapter-spanning testing remain before PaperPad should be described as stable.
+Preview 1 is published and ready for self-signing. Current device testing covers early battles, a 16-minute Kishi V2 session, one clean instrumented replay of the intermittently delayed Goompa return route, and physical-iPad confirmation that the audio crackle is gone. Two more targeted progression replays, complete controller mapping/reconnect, physical-iPhone hands-on acceptance, and chapter-spanning testing remain follow-up validation for future releases.
 
 See [Current status](docs/STATUS.md), [Technical debt](docs/TECH-DEBT.md), and the [Release checklist](docs/RELEASE_CHECKLIST.md) for dated evidence and the remaining gates.
 
@@ -54,7 +54,7 @@ Follow the [unsigned IPA installation guide](docs/INSTALL_IPA.md). Preview 1 is 
 ### Requirements
 
 - An Apple Silicon Mac
-- Xcode with the macOS and iOS SDKs
+- Xcode with the macOS and iOS SDKs, plus the downloadable Metal Toolchain
 - Homebrew
 - CMake, Ninja, Git, jq, Python 3.11 or newer, and Rust/Cargo
 - GNU `cpp-16` (`brew install gcc`)
@@ -73,11 +73,13 @@ cd paperpad
 ### macOS
 
 ```sh
+xcodebuild -downloadComponent MetalToolchain
+export TOOLCHAINS="$(xcodebuild -showComponent MetalToolchain -json | plutil -extract toolchainIdentifier raw -o - -)"
 scripts/build-macos-app.sh --rom /absolute/path/to/your/paper-mario-rom
 open build-macos-release/PaperPad.app
 ```
 
-The build fetches pinned source, applies the maintained patches, validates the ROM, generates local AOT game code, builds PaperPad, and ad-hoc signs a ROM-free app. After the first successful generation, incremental builds can run without `--rom`:
+The first command installs Xcode's optional Metal compiler, and `TOOLCHAINS` selects the installed version explicitly for Xcode releases that do not select it automatically. The build then fetches pinned source, applies the maintained patches, validates the ROM, generates local AOT game code, builds PaperPad, and ad-hoc signs a ROM-free app. After the first successful generation, incremental builds can run without `--rom` in the same shell:
 
 ```sh
 scripts/build-macos-app.sh
