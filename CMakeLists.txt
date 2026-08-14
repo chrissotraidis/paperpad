@@ -28,6 +28,15 @@ if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
 endif()
 
 get_filename_component(PAPERPAD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
+
+# Public release binaries must not retain the builder's personal checkout path
+# through __FILE__, debug metadata, or compiler diagnostics embedded in static
+# libraries. Keep paths reproducible without changing runtime behavior.
+add_compile_options(
+    "-ffile-prefix-map=${PAPERPAD_ROOT}=."
+    "-fmacro-prefix-map=${PAPERPAD_ROOT}=."
+    "-fdebug-prefix-map=${PAPERPAD_ROOT}=.")
+
 set(PM_RECOMP_OUT "${PAPERPAD_ROOT}/generated/aot/paper_mario_recomp_out")
 set(PM_AUDIO_RSP_SOURCE "${PAPERPAD_ROOT}/generated/aot/rsp/n_aspMain.cpp")
 set(PAPERPAD_RECUT "${PAPERPAD_ROOT}/ref/paper-mario-recut")

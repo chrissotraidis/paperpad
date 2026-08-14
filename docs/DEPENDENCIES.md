@@ -22,4 +22,10 @@ Before distributing a binary:
 3. verify that `apple/app/ThirdPartyNotices.txt` matches that artifact rather than relying on this inventory; and
 4. repeat the rights and package audit in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
+The Preview 1 packager collects the exact license and notice files into
+`PaperPad.app/Licenses/`, bundles `ThirdPartyNotices.txt`, and rejects a package
+that omits the required top-level dependency documents. This does not collapse
+those components into a single PaperPad license; every included license remains
+authoritative for its own component.
+
 See [RIGHTS_AND_LICENSES.md](../RIGHTS_AND_LICENSES.md). This inventory is engineering documentation, not legal advice.

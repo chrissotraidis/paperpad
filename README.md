@@ -11,7 +11,7 @@
   <img alt="iOS and iPadOS 15 or newer" src="https://img.shields.io/badge/iOS%20%2F%20iPadOS-15%2B-0A84FF?logo=apple">
   <img alt="Apple Silicon macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-0A84FF?logo=apple">
   <img alt="Metal renderer" src="https://img.shields.io/badge/renderer-Metal-5E5CE6">
-  <img alt="Source release candidate" src="https://img.shields.io/badge/status-source%20release%20candidate-FF9F0A">
+  <img alt="Public preview 1" src="https://img.shields.io/badge/release-v0.1.0--preview.1-FF9F0A">
   <img alt="ROM not included" src="https://img.shields.io/badge/game%20data-not%20included-FF453A">
 </p>
 
@@ -23,7 +23,7 @@ This repository contains integration source, patches, scripts, and documentation
 
 ## Project status
 
-PaperPad is currently available as source. A ROM-free IPA is being prepared but has not been published. There is no signed download, TestFlight, App Store release, or notarized macOS build yet.
+PaperPad `v0.1.0-preview.1` is the first public iPhone and iPad preview. The release provides a ROM-free, unsigned IPA that users sign with their own Apple credentials. There is no TestFlight, App Store release, signed download, or notarized macOS build.
 
 | Target | Current status |
 |---|---|
@@ -32,11 +32,22 @@ PaperPad is currently available as source. A ROM-free IPA is being prepared but 
 | iPad Simulator | Current development build, touch/settings flows, diagnostics, and later-game fixture verified |
 | Physical iPad | Installed and actively tested; battle cursor, first-Goomba battle, longer controller play, and one clean replay of the intermittent early progression route verified |
 | Physical iPhone | Current clean build installed and launched; private test ROM/save migrated, with hands-on touch and gameplay acceptance open |
-| Public binary distribution | Not yet available; ROM-free IPA packaging, rights review, and final device acceptance remain open |
+| Public binary distribution | [ROM-free unsigned Preview 1](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1); self-signing required |
 
-Current device testing covers early battles, a 16-minute Kishi V2 session, and one clean instrumented replay of the intermittently delayed Goompa return route. Two more targeted progression replays, longer listening, complete controller mapping/reconnect, and physical-iPhone hands-on acceptance remain before a public binary release.
+Current device testing covers early battles, a 16-minute Kishi V2 session, and one clean instrumented replay of the intermittently delayed Goompa return route. Two more targeted progression replays, longer listening, complete controller mapping/reconnect, physical-iPhone hands-on acceptance, and chapter-spanning testing remain before PaperPad should be described as stable.
 
 See [Current status](docs/STATUS.md), [Technical debt](docs/TECH-DEBT.md), and the [Release checklist](docs/RELEASE_CHECKLIST.md) for dated evidence and the remaining gates.
+
+## Download Preview 1
+
+Download `PaperPad-v0.1.0-preview.1-unsigned.ipa` and its checksum from the [Preview 1 release](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1).
+
+- iPhone or iPad with iOS/iPadOS 15 or newer
+- arm64, ROM-free, and unsigned; sign it with your own Apple credentials
+- SHA-256: `03a4b1006dbfc91ec8abb849df5c59b49145a5feb215b179ff1da10001848045`
+- Paper Mario (US) 1.0 must be supplied and imported by the user
+
+Follow the [unsigned IPA installation guide](docs/INSTALL_IPA.md). Preview 1 is not an App Store or TestFlight build; uninstalling can remove the private ROM, saves, and settings stored by your signed copy.
 
 ## Get started
 
@@ -226,7 +237,7 @@ No. You must provide your own legally obtained, unmodified Paper Mario (US) 1.0 
 <details>
 <summary><strong>Is there an IPA or App Store build?</strong></summary>
 
-Not yet. A ROM-free IPA is planned after final packaging and device acceptance. Until then, the repository supports local source builds. PaperPad never includes game data; users must import their own supported ROM.
+Yes: [Preview 1](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1) provides a ROM-free unsigned IPA for self-signing. There is no App Store, TestFlight, or pre-signed download. PaperPad never includes game data; users import their own supported ROM.
 </details>
 
 <details>
@@ -269,6 +280,8 @@ No. Development testing covers the opening flow, early battles and progression, 
 ## Documentation
 
 - [Building and device installation](docs/BUILDING.md)
+- [Install the unsigned IPA](docs/INSTALL_IPA.md)
+- [Preview 1 release notes](docs/RELEASE_NOTES-v0.1.0-preview.1.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Current status](docs/STATUS.md)
 - [Technical debt and prioritized release gates](docs/TECH-DEBT.md)

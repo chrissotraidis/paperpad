@@ -34,7 +34,9 @@ Use this checklist for a public source update and again before any macOS or iPho
 
 ## Physical iPhone and iPad
 
-No physical-device build or package is currently published. Before changing that status:
+Preview 1 is a public ROM-free **unsigned** IPA for self-signing. Its package audit passed for arm64 iPhoneOS 15.0, version 0.1.0 build 1, bundled notices/privacy/licenses, and the absence of ROMs, saves, logs, profiles, signatures, personal paths, and non-system runtime dependencies. Its deterministic SHA-256 is `03a4b1006dbfc91ec8abb849df5c59b49145a5feb215b179ff1da10001848045`.
+
+Before a stable or maintainer-signed release:
 
 1. Add and review a generic device build that does not embed signing identities or provisioning material.
 2. Audit the unsigned app before adding a local signature outside the repository.
@@ -43,4 +45,4 @@ No physical-device build or package is currently published. Before changing that
 5. Pair a supported controller and verify the complete mapping, hot-plug/reconnect, automatic touch-overlay hiding, utility-menu access, disconnect restoration, and a sustained gameplay route.
 6. If a private later-game File 2 is used, verify File 1 remains byte-for-byte unchanged, load File 2, exercise a battle/transition/save/relaunch route, and keep every donor and merged save out of source and packages.
 7. Validate privacy manifests, entitlements, encryption declarations, accessibility, complete notices, package contents, and distribution rights.
-8. Record artifact SHA-256, signing method, device/OS coverage, playtest duration, and known limits. Do not describe local signing, TestFlight, App Store, or a prebuilt download as available until that exact path is reproduced.
+8. Record artifact SHA-256, signing method, device/OS coverage, playtest duration, and known limits. Do not describe TestFlight, App Store, or a maintainer-signed download as available until that exact path is reproduced.

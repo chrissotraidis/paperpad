@@ -6,6 +6,18 @@ The complete hands-on issue queue and acceptance criteria are tracked in
 [TECH-DEBT.md](TECH-DEBT.md). This handoff records what the 2026-08-11 working
 tree changed, what was reproduced, and which release gates remain open.
 
+## 2026-08-14 Preview 1 package
+
+- The first public package is the ROM-free, unsigned, self-signable
+  `PaperPad-v0.1.0-preview.1-unsigned.ipa` for arm64 iOS/iPadOS 15 or newer.
+- `scripts/package-unsigned-ipa.sh` builds a deterministic archive and
+  `scripts/audit-ios-package.sh` rejects ROM/save/log/signing/private-path
+  contamination, unexpected runtime dependencies, or missing notices.
+- Two independent package runs matched SHA-256
+  `03a4b1006dbfc91ec8abb849df5c59b49145a5feb215b179ff1da10001848045`.
+- Preview publication does not close the stable-release gameplay, controller,
+  accessibility, physical-iPhone, or chapter-spanning acceptance gates below.
+
 ## 2026-08-13–14 device handoff
 
 - A 16m41s physical-iPad Kishi V2 run reached 30,000 frames without a crash,

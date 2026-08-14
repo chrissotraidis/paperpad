@@ -15,7 +15,8 @@ Paper-Mario-ReCut
 
 papermario (pmret decomp)
   Source: https://github.com/pmret/papermario
-  License: MIT
+  Rights note: source-available decompilation; no blanket license to Nintendo
+  game content is claimed. See PaperPad's rights and licensing boundary.
 
 N64ModernRuntime
   Source: https://github.com/mstan/N64ModernRuntime
