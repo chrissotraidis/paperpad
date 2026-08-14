@@ -136,6 +136,23 @@ Opening the menu, Settings, share sheet, or ROM picker clears held input and hid
 
 SDL-compatible controllers use the left stick, D-pad, face buttons, shoulders, left trigger for Z, and right stick for the C-buttons. A physical Kishi V2 session verified analog plus A/B/Z/L/R/Start during sustained play. D-pad, all C directions, hot-plug, and reconnect still require targeted acceptance.
 
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/release-audit/29-paperpad-goomba-battle-2026-08-14.png" alt="PaperPad battle gameplay with touch controls on iPad">
+    </td>
+    <td width="50%">
+      <img src="docs/release-audit/30-paperpad-title-screen-2026-08-14.png" alt="Paper Mario title screen running in PaperPad on iPad">
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><strong>Battle gameplay</strong><br>Native Metal presentation with the complete touch interface.</td>
+    <td align="center"><strong>Paper Mario on iPad</strong><br>Original 4:3 presentation with customizable controls.</td>
+  </tr>
+</table>
+
 ## What works
 
 | Area | Current implementation |
