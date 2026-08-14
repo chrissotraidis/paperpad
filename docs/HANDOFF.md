@@ -14,9 +14,17 @@ tree changed, what was reproduced, and which release gates remain open.
   `scripts/audit-ios-package.sh` rejects ROM/save/log/signing/private-path
   contamination, unexpected runtime dependencies, or missing notices.
 - Two independent package runs matched SHA-256
-  `03a4b1006dbfc91ec8abb849df5c59b49145a5feb215b179ff1da10001848045`.
+  `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`.
 - Preview publication does not close the stable-release gameplay, controller,
   accessibility, physical-iPhone, or chapter-spanning acceptance gates below.
+- Before final packaging, the complete saved `iphone.v8` preference dictionary
+  was exported from the attached iPhone 14 through a temporary startup console
+  line. Its 15 positions, A/B sizes, opacity/visibility, and unlinked group
+  state now define the fresh-install phone defaults; the temporary exporter was
+  removed and the iPad defaults were not changed.
+- The clean final signed device executable is
+  `ea1453bc17d209ffd4b38a99a2f7299438f444e6d334122de1b96aaada3b6541`;
+  it installed in place and launched on the attached iPhone 14.
 
 ## 2026-08-13–14 device handoff
 
@@ -145,7 +153,7 @@ share/dismissal, modal restoration, and error-free bounded audio telemetry. The
 earlier 2026-08-10 routes still provide first-run, file-flow, all-resolution,
 and File 1A/Mario's House evidence. No Simulator result proves physical audio.
 
-The final physical-device iteration executable is
+The 2026-08-11 physical-iPad iteration executable was
 `4705532b2b5ebca7752ed0fd78bcc6ae1ac7f19d29a3b7f7c831a857e34d6b33`.
 It passed strict signing and ROM/save bundle scans, installed in place on the
 attached iPad14,5 without container reset, launched, and remained live as PID

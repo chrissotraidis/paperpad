@@ -44,7 +44,7 @@ Download `PaperPad-v0.1.0-preview.1-unsigned.ipa` and its checksum from the [Pre
 
 - iPhone or iPad with iOS/iPadOS 15 or newer
 - arm64, ROM-free, and unsigned; sign it with your own Apple credentials
-- SHA-256: `03a4b1006dbfc91ec8abb849df5c59b49145a5feb215b179ff1da10001848045`
+- SHA-256: `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`
 - Paper Mario (US) 1.0 must be supplied and imported by the user
 
 Follow the [unsigned IPA installation guide](docs/INSTALL_IPA.md). Preview 1 is not an App Store or TestFlight build; uninstalling can remove the private ROM, saves, and settings stored by your signed copy.

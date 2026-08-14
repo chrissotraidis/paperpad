@@ -86,25 +86,27 @@ std::array<TouchControl, kControlCount> defaultControls() {
     // The phone radii normalize HarkinianPad's accepted 116-point stick,
     // 52-point face, 44-point D/shoulder, and 40-point C-button targets. Its
     // single Z stays in the right face cluster so the left thumb can move.
+    // These defaults reproduce the accepted physical iPhone 14 arrangement
+    // captured from PaperPad on 2026-08-14.
     return {{
-        {"stick", "", ControlKind::Stick, 0x0000, 0.125, 0.722, 0.148, 0.38, true},
-        {"d_up", "\u2191", ControlKind::Button, 0x0800, 0.131, 0.356, 0.056, 0.38, true},
-        {"d_down", "\u2193", ControlKind::Button, 0x0400, 0.131, 0.512, 0.056, 0.38, true},
-        {"d_left", "\u2190", ControlKind::Button, 0x0200, 0.071, 0.434, 0.056, 0.38, true},
-        {"d_right", "\u2192", ControlKind::Button, 0x0100, 0.191, 0.434, 0.056, 0.38, true},
+        {"stick", "", ControlKind::Stick, 0x0000, 0.141000, 0.783020, 0.1480, 0.38, true},
+        {"d_up", "\u2191", ControlKind::Button, 0x0800, 0.087000, 0.358732, 0.0560, 0.38, true},
+        {"d_down", "\u2193", ControlKind::Button, 0x0400, 0.083889, 0.541144, 0.0560, 0.38, true},
+        {"d_left", "\u2190", ControlKind::Button, 0x0200, 0.038111, 0.444018, 0.0560, 0.38, true},
+        {"d_right", "\u2192", ControlKind::Button, 0x0100, 0.132778, 0.449483, 0.0560, 0.38, true},
         // Keep every right-hand target physically separate. Shoulder buttons
         // are wider than their nominal radius, so their vertical spacing must
         // also leave room for the C cluster below them.
-        {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.914, 0.473, 0.051, 0.52, true},
-        {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.914, 0.597, 0.051, 0.52, true},
-        {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.884, 0.535, 0.051, 0.52, true},
-        {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.944, 0.535, 0.051, 0.52, true},
-        {"a", "A", ControlKind::Button, 0x8000, 0.925, 0.820, 0.066, 0.58, true},
-        {"b", "B", ControlKind::Button, 0x4000, 0.835, 0.790, 0.066, 0.58, true},
-        {"z", "Z", ControlKind::Button, 0x2000, 0.820, 0.630, 0.066, 0.40, true},
-        {"l", "L", ControlKind::Button, 0x0020, 0.940, 0.270, 0.050, 0.36, true},
-        {"r", "R", ControlKind::Button, 0x0010, 0.940, 0.145, 0.050, 0.36, true},
-        {"start", "START", ControlKind::Button, 0x1000, 0.835, 0.150, 0.050, 0.54, true},
+        {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.924667, 0.337299, 0.0510, 0.52, true},
+        {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.926444, 0.522319, 0.0510, 0.52, true},
+        {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.882667, 0.424800, 0.0510, 0.52, true},
+        {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.967111, 0.427532, 0.0510, 0.52, true},
+        {"a", "A", ControlKind::Button, 0x8000, 0.929889, 0.843679, 0.0858, 0.58, true},
+        {"b", "B", ControlKind::Button, 0x4000, 0.850556, 0.736266, 0.0792, 0.58, true},
+        {"z", "Z", ControlKind::Button, 0x2000, 0.924444, 0.671894, 0.0660, 0.40, true},
+        {"l", "L", ControlKind::Button, 0x0020, 0.945778, 0.188033, 0.0500, 0.36, true},
+        {"r", "R", ControlKind::Button, 0x0010, 0.946222, 0.078515, 0.0500, 0.36, true},
+        {"start", "START", ControlKind::Button, 0x1000, 0.873667, 0.068944, 0.0500, 0.54, true},
     }};
 }
 

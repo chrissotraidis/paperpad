@@ -7,6 +7,15 @@ Historical dates use America/Chicago local time. The 2026-08-10 acceptance run
 was performed in Europe/Budapest; report timestamps embedded by the diagnostics
 file are UTC.
 
+## 2026-08-14 Preview 1 packaging and iPhone default capture
+
+| Gate | Evidence | Result |
+|---|---|---|
+| Physical iPhone layout capture | CoreDevice's app-container file service timed out without returning a file. A temporary pre-diagnostics startup line instead serialized only `paperpad.touch.layout.iphone.v8` from the preserved `NSUserDefaults` domain. It returned all 15 control positions/sizes/opacities/visibility values and both group flags as unlinked; no ROM or save was read | Passed exact settings capture; temporary exporter removed |
+| Fresh-install phone defaults | The captured physical iPhone 14 values now define the phone branch of `defaultControls()`. The iPad branch and persisted phone/tablet keys are unchanged, so current users retain their saved layouts while new iPhone installs and Reset use the accepted arrangement | Passed source comparison and Release build |
+| Final physical iPhone deployment | Final ROM/save-free signed arm64 executable SHA-256 `ea1453bc17d209ffd4b38a99a2f7299438f444e6d334122de1b96aaada3b6541` passed strict signature verification, installed in place, and launched under `com.chrissotraidis.paperpad` | Passed build/sign/install/launch; no container reset |
+| Unsigned IPA | Two independent deterministic package runs matched SHA-256 `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`. The audit confirmed arm64 iPhoneOS 15.0, version 0.1.0 build 1, system-only runtime dependencies, bundled privacy/notices/licenses/install/rights files, and no ROM/save/log/profile/signature/personal path | Passed public Preview 1 package gate |
+
 ## 2026-08-13–14 longer iPad controller session and physical-iPhone handoff
 
 | Gate | Evidence | Result |

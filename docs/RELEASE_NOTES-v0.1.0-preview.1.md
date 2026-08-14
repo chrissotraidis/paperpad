@@ -7,7 +7,7 @@ This is PaperPad's first public iPhone and iPad preview.
 - `PaperPad-v0.1.0-preview.1-unsigned.ipa`
 - `PaperPad-v0.1.0-preview.1-unsigned.ipa.sha256`
 
-SHA-256: `03a4b1006dbfc91ec8abb849df5c59b49145a5feb215b179ff1da10001848045`
+SHA-256: `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`
 
 The IPA is ROM-free and unsigned. Sign it with your own Apple credentials before installation, then import your own legally obtained, unmodified Paper Mario (US) 1.0 ROM through PaperPad's file picker. See [IPA installation](INSTALL_IPA.md).
 
@@ -17,6 +17,7 @@ The IPA is ROM-free and unsigned. Sign it with your own Apple credentials before
 - RT64 presentation through Metal with Auto and fixed 1x–4x internal resolution.
 - Original 4:3 and center-cropped Fill Screen presentation.
 - Customizable touch controls with independent phone/tablet layouts and optional linked D-pad/C-button movement.
+- Fresh iPhone installs use the final layout captured directly from the accepted physical iPhone 14 configuration.
 - SDL controller input, private ROM import, FlashRAM saves, native settings, and bounded shareable diagnostics.
 - Audio, battle-pointer, Metal lifetime, shutdown, and frame-pacing fixes from the physical-device testing cycle.
 
