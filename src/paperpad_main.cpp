@@ -29,6 +29,7 @@
 #include "librecomp/game.hpp"
 #include "librecomp/overlays.hpp"
 #include "librecomp/rsp.hpp"
+#include "recomp.h"
 #include "builtin_texture_pack.h"
 #include "paper_rt64_context.h"
 #include "ultramodern/ultra64.h"
@@ -49,12 +50,28 @@ namespace paper_mario {
 
 extern "C" void recomp_entrypoint(uint8_t* rdram, recomp_context* ctx);
 extern "C" recomp_func_t* get_function(int32_t addr);
+extern RspUcodeFunc n_aspMain;
 gpr get_entrypoint_address();
 
 namespace {
     constexpr uint64_t paper_mario_us_xxh3 = 0x1A478F060D5194CFULL;
-    constexpr int32_t paper_mario_step_game_loop_vram = 0x80026740;
-    recomp_func_t* original_step_game_loop = nullptr;
+    constexpr gpr paper_mario_game_status_vram = 0x80074024;
+    constexpr gpr paper_mario_player_status_vram = 0x8010EFC8;
+    constexpr gpr paper_mario_current_npc_list_vram = 0x800A0B90;
+    constexpr gpr paper_mario_current_save_file_vram = 0x800DACC0;
+    constexpr gpr paper_mario_partner_npc_vram = 0x8010C930;
+    constexpr gpr paper_mario_world_script_list_vram = 0x802DA490;
+
+    const auto play_session_started_at = std::chrono::steady_clock::now();
+    std::atomic<uint64_t> game_loop_count{0};
+    std::atomic<uint64_t> last_game_loop_ms{0};
+    std::atomic<bool> play_session_active{true};
+    std::atomic<bool> play_session_watchdog_started{false};
+
+    uint64_t play_session_ms() {
+        return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - play_session_started_at).count());
+    }
 
     constexpr uint16_t A_BUTTON = 0x8000;
     constexpr uint16_t B_BUTTON = 0x4000;
@@ -89,8 +106,12 @@ namespace {
     struct AudioTelemetry {
         std::chrono::steady_clock::time_point next_report{};
         uint64_t callbacks = 0;
+        uint64_t max_callback_gap_us = 0;
         uint64_t input_frames = 0;
         uint64_t output_frames = 0;
+        uint64_t min_prequeue_us = UINT64_MAX;
+        uint64_t zero_prequeue_callbacks = 0;
+        uint64_t under_5ms_prequeue_callbacks = 0;
         uint64_t peak_queue_us = 0;
         uint64_t over_100ms_callbacks = 0;
         uint32_t peak_input = 0;
@@ -101,6 +122,7 @@ namespace {
         uint64_t conversion_errors = 0;
         uint64_t queue_errors = 0;
     } audio_telemetry;
+    std::chrono::steady_clock::time_point previous_audio_callback{};
     std::array<float, output_channels> previous_output_frame{};
     bool has_previous_output_frame = false;
 
@@ -113,15 +135,22 @@ namespace {
         if (now < audio_telemetry.next_report) return;
 
         std::fprintf(stderr,
-            "[audio] input_hz=%u output_hz=%u callbacks=%llu input_frames=%llu "
-            "output_frames=%llu queue_us=%llu peak_queue_us=%llu over_100ms=%llu "
+            "[audio t=%.3fs] input_hz=%u output_hz=%u callbacks=%llu max_gap_us=%llu input_frames=%llu "
+            "output_frames=%llu prequeue_min_us=%llu prequeue_zero=%llu prequeue_under_5ms=%llu "
+            "queue_us=%llu peak_queue_us=%llu over_100ms=%llu "
             "peak_input=%u boundary_avg_ppm=%llu boundary_peak_ppm=%u "
             "within_peak_ppm=%u conversion_errors=%llu queue_errors=%llu\n",
+            play_session_ms() / 1000.0,
             sample_rate,
             output_sample_rate,
             static_cast<unsigned long long>(audio_telemetry.callbacks),
+            static_cast<unsigned long long>(audio_telemetry.max_callback_gap_us),
             static_cast<unsigned long long>(audio_telemetry.input_frames),
             static_cast<unsigned long long>(audio_telemetry.output_frames),
+            static_cast<unsigned long long>(audio_telemetry.min_prequeue_us == UINT64_MAX
+                ? 0 : audio_telemetry.min_prequeue_us),
+            static_cast<unsigned long long>(audio_telemetry.zero_prequeue_callbacks),
+            static_cast<unsigned long long>(audio_telemetry.under_5ms_prequeue_callbacks),
             static_cast<unsigned long long>(current_queue_us),
             static_cast<unsigned long long>(audio_telemetry.peak_queue_us),
             static_cast<unsigned long long>(audio_telemetry.over_100ms_callbacks),
@@ -293,26 +322,238 @@ namespace {
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "PaperPad", msg, window);
     }
 
-    void recut_step_game_loop(uint8_t* rdram, recomp_context* ctx) {
-        static uint64_t game_loop_count = 0;
-        if ((++game_loop_count % 600) == 0) {
-            std::fprintf(stderr, "[paperpad] game loop frames: %llu\n",
-                (unsigned long long)game_loop_count);
+    struct PlayTraceState {
+        int area = -1;
+        int map = -1;
+        int entry = -1;
+        int context = -1;
+        int input_disabled = -1;
+        int action = -1;
+        uint32_t main_script = 0;
+        bool initialized = false;
+    };
+
+    PlayTraceState read_play_trace_state(uint8_t* rdram) {
+        return {
+            .area = static_cast<int>(MEM_H(0x86, paper_mario_game_status_vram)),
+            .map = static_cast<int>(MEM_H(0x8C, paper_mario_game_status_vram)),
+            .entry = static_cast<int>(MEM_H(0x8E, paper_mario_game_status_vram)),
+            .context = static_cast<int>(MEM_B(0x70, paper_mario_game_status_vram)),
+            .input_disabled = static_cast<int>(MEM_B(0x15, paper_mario_player_status_vram)),
+            .action = static_cast<int>(MEM_B(0xB4, paper_mario_player_status_vram)),
+            .main_script = static_cast<uint32_t>(MEM_W(0x6C, paper_mario_game_status_vram)),
+            .initialized = true,
+        };
+    }
+
+    void log_play_trace(const char* reason, uint64_t frame, const PlayTraceState& state) {
+        std::fprintf(stderr,
+            "[session t=%.3fs] %s frame=%llu area=%d map=%d entry=%d context=%d "
+            "script=0x%08x input_disabled=%d action=%d\n",
+            play_session_ms() / 1000.0,
+            reason,
+            static_cast<unsigned long long>(frame),
+            state.area,
+            state.map,
+            state.entry,
+            state.context,
+            state.main_script,
+            state.input_disabled,
+            state.action);
+    }
+
+    void start_play_session_watchdog() {
+        bool expected = false;
+        if (!play_session_watchdog_started.compare_exchange_strong(expected, true)) {
+            return;
+        }
+
+        std::fprintf(stderr, "[session t=%.3fs] trace started\n", play_session_ms() / 1000.0);
+        std::thread([]() {
+            uint64_t warned_frame = 0;
+            while (play_session_active.load(std::memory_order_relaxed)) {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                const uint64_t frame = game_loop_count.load(std::memory_order_relaxed);
+                const uint64_t last_ms = last_game_loop_ms.load(std::memory_order_relaxed);
+                const uint64_t now_ms = play_session_ms();
+                if (frame != 0 && now_ms >= last_ms + 10000 && warned_frame != frame) {
+                    std::fprintf(stderr,
+                        "[session t=%.3fs] game_loop_not_advancing frame=%llu idle_ms=%llu\n",
+                        now_ms / 1000.0,
+                        static_cast<unsigned long long>(frame),
+                        static_cast<unsigned long long>(now_ms - last_ms));
+                    warned_frame = frame;
+                }
+                if (frame != warned_frame && now_ms < last_ms + 10000) {
+                    warned_frame = 0;
+                }
+            }
+        }).detach();
+    }
+
+    void trace_goompa_scene(uint8_t* rdram, uint64_t frame);
+
+    void trace_game_loop_boundary(uint8_t* rdram) {
+        const uint64_t frame = game_loop_count.fetch_add(1, std::memory_order_relaxed) + 1;
+        last_game_loop_ms.store(play_session_ms(), std::memory_order_relaxed);
+
+        static PlayTraceState previous{};
+        const PlayTraceState current = read_play_trace_state(rdram);
+        const bool scene_changed = !previous.initialized
+            || current.area != previous.area
+            || current.map != previous.map
+            || current.entry != previous.entry
+            || current.context != previous.context;
+        const bool input_lock_changed = previous.initialized
+            && current.input_disabled != previous.input_disabled;
+        if (scene_changed) {
+            log_play_trace("scene", frame, current);
+        } else if (input_lock_changed) {
+            log_play_trace("input_lock", frame, current);
+        } else if ((frame % 600) == 0) {
+            log_play_trace("heartbeat", frame, current);
 #if defined(__APPLE__) && TARGET_OS_IPHONE
             // Periodic iOS window/layer diagnostics to catch post-rotation state.
             paperpad_log_window_diagnostics(ios_ui_window, ios_metal_layer);
 #endif
         }
-        if (original_step_game_loop != nullptr) {
-            original_step_game_loop(rdram, ctx);
+        previous = current;
+        trace_goompa_scene(rdram, frame);
+    }
+
+    float read_guest_float(uint8_t* rdram, gpr address) {
+        uint32_t bits = static_cast<uint32_t>(MEM_W(0, address));
+        float value = 0.0f;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
+
+    int16_t read_guest_s16(uint8_t* rdram, gpr address) {
+        return static_cast<int16_t>(MEM_H(0, address));
+    }
+
+    bool is_valid_guest_range(gpr address, uint32_t size = 1) {
+        constexpr uint32_t rdram_start = 0x80000000;
+        constexpr uint32_t rdram_end = 0x80800000;
+        const uint32_t start = static_cast<uint32_t>(address);
+        return start >= rdram_start && size <= rdram_end - rdram_start
+            && start <= rdram_end - size;
+    }
+
+    void trace_goompa_scene(uint8_t* rdram, uint64_t vi_count) {
+        constexpr int area_kmr = 0;
+        constexpr int map_kmr_02 = 1;
+        constexpr int map_kmr_03 = 2;
+        constexpr int npc_goompa = 0;
+        constexpr int max_npcs = 64;
+        constexpr int max_scripts = 128;
+        constexpr int story_fell_off_cliff = -122;
+        constexpr int story_goombario_joined_party = -115;
+        constexpr uint32_t kmr_02_return_to_village_script = 0x802497F4;
+        constexpr uint32_t kmr_03_goompa_ai_script = 0x80240B50;
+
+        const int area = MEM_H(0x86, paper_mario_game_status_vram);
+        const int map = MEM_H(0x8C, paper_mario_game_status_vram);
+        const int story_progress = static_cast<int8_t>(
+            MEM_B(0x10B0, paper_mario_current_save_file_vram));
+        const bool is_playground_return = map == map_kmr_03
+            && story_progress >= story_fell_off_cliff
+            && story_progress < story_goombario_joined_party;
+        const bool is_village_gate_scene = map == map_kmr_02
+            && story_progress > story_fell_off_cliff
+            && story_progress < story_goombario_joined_party;
+        if (area != area_kmr
+            || (!is_playground_return && !is_village_gate_scene)
+            || (vi_count % 60) != 0) {
+            return;
         }
+
+        // After Goompa joins Mario in kmr_03, the map NPC is deliberately
+        // moved to y=-1000 and the visible character is wPartnerNpc. The old
+        // trace followed that disposed NPC, so its movement readings could
+        // not diagnose the return-to-village freeze.
+        gpr goompa = static_cast<gpr>(static_cast<uint32_t>(
+            MEM_W(0, paper_mario_partner_npc_vram)));
+        if (!is_valid_guest_range(goompa, 0xA5)) {
+            goompa = 0;
+            const gpr npc_list = static_cast<gpr>(static_cast<uint32_t>(
+                MEM_W(0, paper_mario_current_npc_list_vram)));
+            for (int i = 0; is_valid_guest_range(npc_list, max_npcs * sizeof(uint32_t))
+                    && i < max_npcs; i++) {
+                const gpr npc = static_cast<gpr>(static_cast<uint32_t>(
+                    MEM_W(i * sizeof(uint32_t), npc_list)));
+                if (is_valid_guest_range(npc, 0xA5) && MEM_W(0, npc) != 0
+                    && static_cast<int8_t>(MEM_B(0xA4, npc)) == npc_goompa) {
+                    goompa = npc;
+                    break;
+                }
+            }
+        }
+
+        const uint32_t expected_script = is_village_gate_scene
+            ? kmr_02_return_to_village_script
+            : kmr_03_goompa_ai_script;
+        gpr scene_script = 0;
+        for (int i = 0; i < max_scripts; i++) {
+            const gpr script = static_cast<gpr>(static_cast<uint32_t>(MEM_W(
+                i * sizeof(uint32_t), paper_mario_world_script_list_vram)));
+            if (is_valid_guest_range(script, 0x168)
+                && static_cast<uint32_t>(MEM_W(0x15C, script)) == expected_script) {
+                scene_script = script;
+                break;
+            }
+        }
+        gpr child_script = scene_script == 0
+            ? 0 : static_cast<gpr>(static_cast<uint32_t>(MEM_W(0x68, scene_script)));
+        if (!is_valid_guest_range(child_script, 0x168)) {
+            child_script = 0;
+        }
+
+        std::fprintf(stderr,
+            "[goompa_scene t=%.3fs] frame=%llu map=%d story=%d "
+            "input_disabled=%d "
+            "mario=(%.3f,%.3f,%.3f) goompa=(%.3f,%.3f,%.3f) "
+            "goal=(%.3f,%.3f,%.3f) speed=%.3f duration=%d anim=0x%08x "
+            "script=0x%08x first=0x%08x next=0x%08x read=0x%08x "
+            "line=0x%08x state=0x%02x opcode=%u blocked=%d api=0x%08x "
+            "child=0x%08x child_first=0x%08x child_line=0x%08x "
+            "child_api=0x%08x child_blocked=%d frame_counter=%.3f\n",
+            play_session_ms() / 1000.0,
+            static_cast<unsigned long long>(vi_count),
+            map,
+            story_progress,
+            static_cast<int>(MEM_B(0x15, paper_mario_player_status_vram)),
+            read_guest_float(rdram, paper_mario_player_status_vram + 0x28),
+            read_guest_float(rdram, paper_mario_player_status_vram + 0x2C),
+            read_guest_float(rdram, paper_mario_player_status_vram + 0x30),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x38),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x3C),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x40),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x60),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x64),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x68),
+            goompa == 0 ? 0.0f : read_guest_float(rdram, goompa + 0x18),
+            goompa == 0 ? -1 : read_guest_s16(rdram, goompa + 0x8E),
+            goompa == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x28, goompa)),
+            static_cast<uint32_t>(scene_script),
+            scene_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x15C, scene_script)),
+            scene_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x08, scene_script)),
+            scene_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x0C, scene_script)),
+            scene_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x164, scene_script)),
+            scene_script == 0 ? 0 : static_cast<unsigned int>(MEM_B(0, scene_script)),
+            scene_script == 0 ? 0 : static_cast<unsigned int>(MEM_B(0x02, scene_script)),
+            scene_script == 0 ? -1 : static_cast<int8_t>(MEM_B(0x05, scene_script)),
+            scene_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x80, scene_script)),
+            static_cast<uint32_t>(child_script),
+            child_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x15C, child_script)),
+            child_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x164, child_script)),
+            child_script == 0 ? 0 : static_cast<uint32_t>(MEM_W(0x80, child_script)),
+            child_script == 0 ? -1 : static_cast<int8_t>(MEM_B(0x05, child_script)),
+            scene_script == 0 ? 0.0f : read_guest_float(rdram, scene_script + 0x154));
     }
 
     void install_recut_frame_hooks(uint8_t*, recomp_context*) {
-        original_step_game_loop = get_function(paper_mario_step_game_loop_vram);
-        std::fprintf(stderr, "[paperpad] step_game_loop hook: %p\n",
-            (void*)original_step_game_loop);
-        recomp::overlays::add_loaded_function(paper_mario_step_game_loop_vram, recut_step_game_loop);
+        start_play_session_watchdog();
     }
 
     bool open_controller_index(int device_index) {
@@ -447,6 +688,9 @@ namespace {
             }
             else if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
                 if (controller != nullptr && event.cdevice.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
+                    std::fprintf(stderr, "[input t=%.3fs] controller disconnected: %s\n",
+                        play_session_ms() / 1000.0,
+                        SDL_GameControllerName(controller) ?: "unknown");
                     SDL_GameControllerClose(controller);
                     controller = nullptr;
                     active_controller_device_index = -1;
@@ -529,6 +773,16 @@ namespace {
         static std::vector<float> source_buffer;
         static std::vector<float> converted_buffer;
 
+        const auto callback_now = std::chrono::steady_clock::now();
+        if (previous_audio_callback.time_since_epoch().count() != 0) {
+            const uint64_t callback_gap_us = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    callback_now - previous_audio_callback).count());
+            audio_telemetry.max_callback_gap_us = std::max(
+                audio_telemetry.max_callback_gap_us, callback_gap_us);
+        }
+        previous_audio_callback = callback_now;
+
         source_buffer.resize(sample_count);
 
         const float output_gain = 0.5f / 32768.0f;
@@ -584,6 +838,14 @@ namespace {
         audio_telemetry.input_frames += sample_count / input_channels;
         audio_telemetry.output_frames +=
             queue_bytes / (output_channels * sizeof(float));
+        audio_telemetry.min_prequeue_us = std::min(
+            audio_telemetry.min_prequeue_us, queued_input_us);
+        if (queued_input_us == 0) {
+            audio_telemetry.zero_prequeue_callbacks++;
+        }
+        if (queued_input_us < 5000) {
+            audio_telemetry.under_5ms_prequeue_callbacks++;
+        }
         audio_telemetry.peak_queue_us = std::max(audio_telemetry.peak_queue_us, queued_input_us);
         if (queued_input_us >= 100000) audio_telemetry.over_100ms_callbacks++;
 
@@ -747,18 +1009,59 @@ namespace {
         float touch_x = 0.0f;
         float touch_y = 0.0f;
         paperpad_touch_snapshot(&touch_btns, &touch_x, &touch_y);
+        const bool touch_active = touch_btns != 0 || std::abs(touch_x) >= 0.05f || std::abs(touch_y) >= 0.05f;
         out_buttons |= touch_btns;
         out_x += touch_x;
         out_y += touch_y;
 #else
+        const bool touch_active = touch_buttons.load(std::memory_order_relaxed) != 0
+            || std::abs(touch_stick_x.load(std::memory_order_relaxed)) >= 0.05f
+            || std::abs(touch_stick_y.load(std::memory_order_relaxed)) >= 0.05f;
         out_buttons |= touch_buttons.load(std::memory_order_relaxed);
         out_x += touch_stick_x.load(std::memory_order_relaxed);
         out_y += touch_stick_y.load(std::memory_order_relaxed);
 #endif
 
+        const float clamped_x = std::clamp(out_x, -1.0f, 1.0f);
+        const float clamped_y = std::clamp(out_y, -1.0f, 1.0f);
         *buttons = out_buttons;
-        *x = std::clamp(out_x, -1.0f, 1.0f);
-        *y = std::clamp(out_y, -1.0f, 1.0f);
+        *x = clamped_x;
+        *y = clamped_y;
+
+        // Keep input evidence compact: button edges and coarse stick-direction
+        // changes are enough to tell whether the app delivered a touch or
+        // controller action without logging every poll.
+        static uint16_t previous_buttons = 0;
+        static int previous_direction = 0;
+        static uint64_t last_direction_log_ms = 0;
+        int direction = 0;
+        if (std::abs(clamped_x) >= 0.20f || std::abs(clamped_y) >= 0.20f) {
+            if (std::abs(clamped_x) > std::abs(clamped_y) * 1.25f) {
+                direction = clamped_x > 0.0f ? 1 : 2;
+            } else if (std::abs(clamped_y) > std::abs(clamped_x) * 1.25f) {
+                direction = clamped_y > 0.0f ? 3 : 4;
+            } else {
+                direction = 5;
+            }
+        }
+        const uint64_t now_ms = play_session_ms();
+        const bool buttons_changed = out_buttons != previous_buttons;
+        const bool direction_changed = direction != previous_direction
+            && (direction == 0 || now_ms >= last_direction_log_ms + 100);
+        if (buttons_changed || direction_changed) {
+            std::fprintf(stderr,
+                "[input t=%.3fs] buttons=0x%04x stick_dir=%d touch=%d controller=%d\n",
+                now_ms / 1000.0,
+                out_buttons,
+                direction,
+                touch_active ? 1 : 0,
+                controller != nullptr ? 1 : 0);
+            if (direction_changed) {
+                last_direction_log_ms = now_ms;
+            }
+        }
+        previous_buttons = out_buttons;
+        previous_direction = direction;
         return true;
     }
 
@@ -773,21 +1076,9 @@ namespace {
     }
 
     RspUcodeFunc* get_rsp_microcode(const OSTask* task) {
-        // Audio (M_AUDTASK) is handled by the runtime's HLE NAUDIO backend
-        // (mupen64plus-rsp-hle) since 2026-08-05; the recompiled n_aspMain
-        // ucode is broken for Paper Mario because it omits RSP boot-register
-        // and DMEM setup, and used to flood errors / spin forever. See
-        // KNOWN-ISSUES.md macOS #1. PAPERPAD_DROP_AUDIO_RSP=1 remains as a
-        // legacy escape hatch.
-        static const bool drop_audio_rsp = []() {
-            const char* v = std::getenv("PAPERPAD_DROP_AUDIO_RSP");
-            return v != nullptr && v[0] != '\0' && v[0] != '0';
-        }();
-        if (drop_audio_rsp && task->t.type == M_AUDTASK) {
-            return nullptr;
+        if (task->t.type == M_AUDTASK) {
+            return n_aspMain;
         }
-        // M_AUDTASK is consumed before this callback by the pinned runtime's
-        // NAUDIO HLE backend, so no recompiled audio microcode is required.
         std::fprintf(stderr, "Unknown non-graphics RSP task type: %u\n", task->t.type);
         return nullptr;
     }
@@ -872,6 +1163,10 @@ namespace {
         return false;
     }
 } // namespace
+
+extern "C" void paperpad_trace_game_loop(uint8_t* rdram, recomp_context*) {
+    trace_game_loop_boundary(rdram);
+}
 
 // Touch bridge (Apple shell).
 extern "C" void PaperPad_SetTouchButtons(uint16_t buttons) {
@@ -1044,6 +1339,8 @@ int PAPERPAD_MAIN(int argc, char** argv) {
         events_callbacks,
         error_callbacks,
         thread_callbacks);
+
+    play_session_active.store(false, std::memory_order_relaxed);
 
     if (controller != nullptr) {
         SDL_GameControllerClose(controller);

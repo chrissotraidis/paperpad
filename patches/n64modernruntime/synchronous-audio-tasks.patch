@@ -1,0 +1,30 @@
+diff --git a/lib/N64ModernRuntime/ultramodern/src/events.cpp b/lib/N64ModernRuntime/ultramodern/src/events.cpp
+index b340f19..dfaa5b1 100644
+--- a/lib/N64ModernRuntime/ultramodern/src/events.cpp
++++ b/lib/N64ModernRuntime/ultramodern/src/events.cpp
+@@ -663,6 +663,25 @@ void ultramodern::submit_rsp_task(RDRAM_ARG PTR(OSTask) task_) {
+     if (task->t.type == M_GFXTASK) {
+         events_context.action_queue.enqueue(SpTaskAction{ *task });
+     }
++    // Paper Mario reuses its audio task and command buffers immediately after
++    // the shared SP-completion message is received. Graphics and audio use one
++    // physical RSP on N64, but the host runtime otherwise executes them on two
++    // independent threads that can post those indistinguishable completions
++    // out of order. Finish the small audio task before returning and post its
++    // completion here so the guest cannot recycle its inputs while HLE is
++    // still reading them.
++    else if (task->t.type == M_AUDTASK) {
++        static std::once_flag audio_order_log_once;
++        std::call_once(audio_order_log_once, []() {
++            fprintf(stderr,
++                "[rsp] synchronous audio tasks enabled: preserving shared SP completion order\n");
++        });
++        if (!ultramodern::rsp::run_task(PASS_RDRAM task)) {
++            fprintf(stderr, "Failed to execute audio task\n");
++            ULTRAMODERN_QUICK_EXIT();
++        }
++        sp_complete();
++    }
+     // Set all other tasks as the RSP task
+     else {
+         events_context.sp_task_queue.enqueue(task);

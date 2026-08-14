@@ -1,10 +1,24 @@
 # PaperPad handoff
 
-Current as of 2026-08-11. The maintained source-build paths are `scripts/build-macos-app.sh` and `scripts/build-ios-simulator.sh`; older `build-macos2`, `build-ios-deps`, and manual `ref/mstan-*` instructions are obsolete.
+Current as of 2026-08-14. The maintained source-build paths are `scripts/build-macos-app.sh` and `scripts/build-ios-simulator.sh`; older `build-macos2`, `build-ios-deps`, and manual `ref/mstan-*` instructions are obsolete.
 
 The complete hands-on issue queue and acceptance criteria are tracked in
 [TECH-DEBT.md](TECH-DEBT.md). This handoff records what the 2026-08-11 working
 tree changed, what was reproduced, and which release gates remain open.
+
+## 2026-08-13–14 device handoff
+
+- A 16m41s physical-iPad Kishi V2 run reached 30,000 frames without a crash,
+  fatal/assert, or game-loop-stall line. Analog and A/B/Z/L/R/Start were
+  observed; D-pad/C directions and reconnect remain targeted checks.
+- After physical-iPhone rejection of the first grouped layout, D-pad and C
+  directions move individually by default. Link/Unlink optionally binds only
+  the selected cluster for movement. `iphone.v8` corrects the phone geometry;
+  accepted `ipad.v4` tablet defaults remain independent.
+- A clean ROM/save-free app is installed and running on the physical iPhone 14.
+  The private iPad test ROM/save were copied before the clean in-place install.
+  Runtime initialization passed; direct File Select/save and compact-touch
+  acceptance are the next user checks.
 
 ## Reproduce the current build
 

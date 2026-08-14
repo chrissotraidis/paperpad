@@ -310,6 +310,16 @@ namespace {
             auto setup_app = [&](const ultramodern::renderer::GraphicsConfig& setup_config) {
                 app = std::make_unique<RT64::Application>(core, app_config);
                 apply_user_config(app.get(), setup_config);
+                std::fprintf(stderr,
+                    "[render] initial config resolution=%d multiplier=%.2f aspect=%d "
+                    "fill=%d filter=%d upscale2d=%d three_point=%d\n",
+                    static_cast<int>(app->userConfig.resolution),
+                    app->userConfig.resolutionMultiplier,
+                    static_cast<int>(app->userConfig.aspectRatio),
+                    app->userConfig.fillActiveArea ? 1 : 0,
+                    static_cast<int>(app->userConfig.filtering),
+                    static_cast<int>(app->userConfig.upscale2D),
+                    app->userConfig.threePointFiltering ? 1 : 0);
                 app->userConfig.developerMode = developer_mode;
                 app->enhancementConfig.f3dex.forceBranch = true;
                 app->enhancementConfig.textureLOD.scale = true;

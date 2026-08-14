@@ -1,0 +1,18 @@
+diff --git a/lib/N64ModernRuntime/ultramodern/src/audio.cpp b/lib/N64ModernRuntime/ultramodern/src/audio.cpp
+index 80e25f0..7172a8a 100644
+--- a/lib/N64ModernRuntime/ultramodern/src/audio.cpp
++++ b/lib/N64ModernRuntime/ultramodern/src/audio.cpp
+@@ -35,7 +35,12 @@ void ultramodern::queue_audio_buffer(RDRAM_ARG PTR(int16_t) audio_data_, uint32_
+     }
+ }
+ 
+-float buffer_offset_frames = 1.5f;
++// Paper Mario submits one synthesized block per VI. On physical iPad hardware,
++// the host queue repeatedly drained between those submissions with the generic
++// 1.5-VI feedback reservoir. Keep enough reported headroom for the observed
++// 20-24 ms callback jitter without dropping, duplicating, or time-compressing
++// already-rendered PCM.
++float buffer_offset_frames = 2.5f;
+ 
+ // If there's ever any audio popping, check here first. Some games are very sensitive to
+ // the remaining sample count and reporting a number that's too high here can lead to issues.

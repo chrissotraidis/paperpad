@@ -1,11 +1,196 @@
 # PaperPad technical debt
 
-Updated 2026-08-11 from hands-on testing of the physical iPad development build.
+Updated 2026-08-14 from hands-on testing of the physical iPad and iPhone development builds.
 This is the morning triage list, not a claim that the causes below are already
 known. The menu is usable and touch visibility, opacity, layout, and volume
-controls feel good, but the exercised route is no longer considered stable.
-Audio and a newly observed Goomba Village progression freeze are release-
-blocking problems.
+controls feel good, but the exercised route is not yet release-accepted. The
+battle pointer is physically verified; Goomba Village progression remains a
+release blocker. Audio has one provisional
+hands-on pass and must be reopened if it recurs.
+
+### Latest longer-session and iPhone boundary (2026-08-13–14)
+
+- The latest iPad/controller log covers 16m41s and 30,000 frames. It contains
+  no crash, fatal/assert, or game-loop-stall line. The user judged the game
+  good during this route.
+- All 498 audio telemetry windows report zero conversion and queue errors. One
+  mid-session queue-depth excursion exceeded 100 ms and then recovered; it is
+  retained as regression evidence, not treated as an audible failure without
+  a matching report.
+- A Kishi V2 exercised analog plus A/B/Z/L/R/Start. D-pad, all C directions,
+  controller disconnect/reconnect, and overlay restoration remain targeted
+  acceptance checks rather than a reason to redesign the input path.
+- The first grouped-layout iteration was rejected on the physical iPhone: its
+  C cluster was too loose, its D-pad was too tight, and group movement was
+  mandatory. `iphone.v8` corrects the phone-only geometry and restores
+  individual movement by default. Link/Unlink optionally binds only the
+  selected D-pad or C cluster and persists that choice. The accepted iPad
+  `ipad.v4` defaults remain independent.
+- A clean signed build is installed and running on the physical iPhone 14. The
+  exact private iPad ROM and 128 KiB save were seeded before a clean in-place
+  reinstall. Runtime output proves the clean app can initialize and enter the
+  game, but File Select/save visibility and touch ergonomics need the user's
+  direct iPhone acceptance.
+
+The remaining release work is targeted: two Goompa route replays, iPhone
+hands-on acceptance, complete controller mapping/reconnect checks, and a
+longer/chapter-spanning route. Do not add speculative game-script work unless
+the intermittent progression failure reproduces with a contrasting trace.
+
+### Latest hands-on boundary (2026-08-12 13:37–15:27 Europe/Budapest)
+
+- The user's latest listening pass reported that audio sounded fixed. The run
+  used Paper Mario's newly generated exact audio RSP entry at IMEM `0x1080`,
+  with synchronous SP completion ordering. Treat this as one physical-iPad
+  pass; reopen immediately if flutter/static recurs in a longer route.
+- The shared `get_screen_coords` replacement uses the US 1.0 projection math;
+  it contains no battle- or actor-specific offset. The user confirmed on the
+  physical iPad that the hand now aligns correctly with the selected Goomba.
+- That first cursor candidate then crashed immediately after the first Goomba
+  was defeated, twice. Both retained iPad reports (`15:00:30` and `15:01:35`)
+  are identical `EXC_BAD_ACCESS`/`SIGBUS` failures on the VI Thread at
+  `trace_vi_frame + 1744`. Disassembly maps the fault to the temporary
+  diagnostic sampler dereferencing a HUD-element pointer while battle objects
+  were being torn down. The projection hook is not in either crashing stack.
+- The temporary cross-thread battle sampler has been removed. Goompa sampling
+  now runs after the original game-loop step and validates guest pointers. The
+  replacement ROM/save-free binary SHA-256
+  `670ef7402545acd6ade482fb78c20d12133895d1b9adc37660d409870ffcaa6e`
+  passed build, strict signature, and an in-place iPad install/launch. The next
+  physical run completed the same first-Goomba battle without crashing. A
+  second clean battle remains desirable regression evidence, but the
+  deterministic instrumentation crash no longer reproduced.
+- The same run reached the Goompa gate. The gate eventually opened, but only
+  after an abnormally long delay; after Mario crossed, the characters remained
+  idle and dialogue/progression did not resume. The live log was copied while
+  PaperPad was still running. It shows continuing audio and input events, so
+  this is a guest cutscene/script stall rather than a whole-app freeze.
+- The first revised Goompa logger emitted no scene rows because generated
+  functions call `step_game_loop` directly and bypass the runtime overlay
+  lookup. That empty trace is not treated as diagnosis. The replacement uses
+  maintained N64Recomp hooks at the actual `step_game_loop` and `NpcMoveTo`
+  return boundaries. Both execute on the guest game thread and only observe
+  original state/result values.
+- The observation-only candidate executable SHA-256
+  `5462f680e9a50af18451e1d2453c06503fffb3601a392c3c6903d55b5c04ea76`
+  passed build and strict signing, contains no ROM/save, and installed in place.
+  Exact pre/post save read-back remained byte-for-byte identical at SHA-256
+  `c7bd66d4e2e971796f636dab6abdedc39d06410a3c142a953168c402bf61e398`.
+  Startup confirms the safe game-loop hook is active.
+- A 2026-08-13 physical-iPad replay with a local unsaved QuickTime recording
+  completed the previously failing return-to-village route. The corresponding
+  log shows every observed `NpcMoveTo` returning success, including Goompa's
+  approaches to `(-295,-30)`, `(-168,-15)`, and subsequent village positions.
+  The script advanced into the normal badge tutorial and was waiting in
+  `EVS_PromptForBadgeTutorial -> SpeakToPlayer`, not frozen. This rules out an
+  unconditional `NpcMoveTo` translation defect. Because prior physical runs
+  did stall, progression remains an intermittent release gate until two more
+  complete passes reproduce this result.
+- A direct source/generated-code comparison found no divergence in
+  `NpcMoveTo` or `npc_move_heading`: the recomp resolves and retains the NPC,
+  computes its goal, speed, yaw, and distance, advances it each call, and
+  blocks until the remaining distance is within one movement step just like
+  the US 1.0 decomp. That rules out the simplest static movement-translation
+  hypothesis; the exact blocked script/API state must come from a reproduced
+  gate run before any scene-specific change is justified.
+
+Release remains blocked until two more instrumented Goompa return-to-village
+routes complete with dialogue, movement, and input restored. A new failure
+must be marked live and compared against the successful trace before any game-
+behavior change is justified.
+
+## 2026-08-12 targeted physical-iPad iteration
+
+The user re-ran File 1 on the physical iPad. Intermittent music static remained
+audible, and the battle selection hand was still horizontally detached from
+the selected Goomba. The user did not replay the Goompa gate sequence during
+this pass, so the progression guard remains unaccepted. These results keep the
+build release-blocked.
+
+### What was tried, and what the evidence now says
+
+- The earlier continuous `SDL_AudioStream` conversion repair removed a measured
+  block-boundary resampling defect, but did not remove all audible static.
+- An earlier uninstrumented increase from 1.5 to 2.5 VI frames did not
+  eliminate the physical-device symptom and was reverted. That run predated
+  both host-queue feedback and synchronous audio-task ordering, so it did not
+  test the current pipeline.
+- SDL telemetry remained structurally healthy while the user heard static:
+  callbacks stayed near 20–23 ms, queued output remained bounded after each
+  submission, and no conversion or queue errors were recorded. The existing
+  counter does not prove the device queue stayed non-empty between submissions,
+  so output starvation was not ruled out. A new pre-submit counter then proved
+  the 1.5-VI candidate reached an empty device queue 2–7 times in every
+  two-second window, including after music began. This is a real underrun
+  signature that the old post-submit counter concealed.
+- Source comparison found a second, independent audio clock in the pinned
+  runtime: `osAiGetLength` reported a synthetic wall-clock two-entry N64 FIFO
+  instead of the actual host audio queue used by SDL. The 2026-08-12 candidate
+  removes that duplicate model and uses the official runtime's host-queue
+  feedback seam. This changes pacing, not volume, filtering, or ROM data.
+- A wider scheduler audit then found that graphics and audio tasks posted
+  indistinguishable completion messages to Paper Mario's one guest SP queue
+  from two host threads. That ordering can let the guest recycle a small audio
+  command buffer while the host audio task is still consuming it. The current
+  candidate executes each small audio task synchronously before posting its SP
+  completion, preserving the single-RSP ordering the game expects. This is a
+  runtime scheduling correction, not a ROM, save, or generated-game-code edit;
+  physical listening still determines whether it closes the static.
+- With those two runtime corrections active, one bounded 1.5→2.5-VI A/B on
+  the same physical iPad removed every post-startup drain: 36 consecutive
+  two-second windows reported zero empty or under-5-ms pre-submit queues,
+  minimum headroom stayed 8.5–13.2 ms, and peak queued output stayed bounded
+  below 73 ms. The 2.5-VI value is therefore retained as a measured starvation
+  repair, not a cache-size guess. It still needs hands-on listening because
+  counters cannot establish audible quality.
+- The pointer remained wrong while the renderer reported Original 4:3
+  (`aspect=Original`, `fill=0`). This disproves the earlier claim that Fill
+  Screen's expanded projection was the complete cause. No global or
+  actor-specific pointer offset has been added.
+- Recompiled functions call one another directly within generated translation
+  units, so an overlay lookup hook cannot reliably observe either target draw
+  or Goompa movement. That dead hook path was removed. The current candidate
+  samples the same read-only target, camera, HUD, NPC, and input-lock fields at
+  the stable VI boundary. It cannot move a pointer or NPC and should finally
+  provide useful evidence from a short first battle and the Goompa scene.
+
+The current signed candidate executable has SHA-256
+`568193f74616de7d01fa4d3794a5bcbe5e0ab15195bfa485a49921db04bfe837`.
+It was installed in place and launched on the physical iPad without removing
+PaperPad or replacing its data container. Startup diagnostics confirm the new
+binary reached renderer/game/audio initialization and activated synchronous
+audio-task ordering. Its preserved save hash was identical immediately before
+and after installation. Audible quality, pointer alignment, and Goompa
+progression still require hands-on acceptance; a successful build and healthy
+queue counters do not close any of those issues.
+
+The user's 10:39 hands-on report was produced before this exact candidate was
+installed. The current candidate is the first one that combines host-queue
+feedback, synchronous audio-task ordering, retained 2.5-VI headroom, and the
+pre-submit drain counter. It still needs human listening, and its battle and
+Goompa diagnostics need those exact routes before they can identify either
+gameplay defect.
+
+An earlier candidate contained a scene-specific two-second Goompa movement
+completion guard. Review rejected that approach before acceptance: it wrote an
+NPC position and returned completion without proving why the original movement
+stalled. The installed hash above removes that behavior. Its Goompa hook is
+diagnostic-only and cannot change NPC, script, story, or input-lock state.
+
+### Next evidence gate
+
+1. From File 1, enter the first target-selection screen once and record whether
+   the hand remains horizontally wrong. Extract the resulting bounded current
+   log and compare the selected target's true position, projected screen
+   coordinate, and HUD render position before changing code.
+2. During the same short route, listen for the previously repeatable static.
+   If it remains, capture its approximate timestamp and correlate it with
+   source PCM discontinuity and AI queue-feedback values. Do not add latency or
+   gain changes without evidence.
+3. Separately, reproduce the Goompa sequence from the preserved save three
+   times. The narrow guard is accepted only if the original scene completes,
+   control returns, and diagnostics show the exact stalled `NpcMoveTo` goal;
+   it must not become a general scene-skip mechanism.
 
 ## 2026-08-11 16:02 physical-iPad progression blocker
 

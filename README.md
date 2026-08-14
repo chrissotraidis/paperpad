@@ -1,12 +1,10 @@
 # PaperPad
 
-<p align="center">
-  <img alt="PaperPad app icon: folded paper with touch controls" src="apple/app/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png" width="128">
-</p>
+![PaperPad battle with Mario and three flying Goombas on iPad](docs/release-audit/28-paperpad-flying-goomba-battle-2026-08-14.png)
 
 <p align="center">
   <strong>Paper Mario recompiled for Apple Silicon.</strong><br>
-  Native Metal rendering, customizable iPhone and iPad touch controls, controller support, and private ROM import.
+  Native Metal rendering, customizable iPhone and iPad controls, controller support, and private ROM import.
 </p>
 
 <p align="center">
@@ -17,9 +15,7 @@
   <img alt="ROM not included" src="https://img.shields.io/badge/game%20data-not%20included-FF453A">
 </p>
 
-![PaperPad running the Paper Mario prologue with touch controls](docs/release-audit/18-paperpad-ipad-final-prologue.png)
-
-PaperPad combines the [pmret Paper Mario decompilation](https://github.com/pmret/papermario) with the statically recompiled runtime and renderer maintained by [Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut). It adds an Apple-native application shell, Metal presentation, keyboard and controller input, customizable touch controls, native settings, and a private first-run ROM importer.
+PaperPad combines the [pmret Paper Mario decompilation](https://github.com/pmret/papermario) with the statically recompiled runtime and renderer maintained by [Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut). It adds a native Apple application shell, Metal presentation, keyboard and controller input, customizable touch controls, native settings, and private first-run ROM import.
 
 PaperPad is a game-specific static recompile, not a general Nintendo 64 emulator. It currently supports only an unmodified **Paper Mario (US) 1.0** ROM supplied by the user.
 
@@ -27,18 +23,18 @@ This repository contains integration source, patches, scripts, and documentation
 
 ## Project status
 
-PaperPad is available as source. There is currently no public IPA, signed download, TestFlight, App Store release, or notarized macOS build.
+PaperPad is currently available as source. A ROM-free IPA is being prepared but has not been published. There is no signed download, TestFlight, App Store release, or notarized macOS build yet.
 
 | Target | Current status |
 |---|---|
 | Apple Silicon macOS | Source build, launch, file creation, early gameplay, keyboard input, and clean quit verified |
 | iPhone Simulator | Current development build and compact touch layout verified |
 | iPad Simulator | Current development build, touch/settings flows, diagnostics, and later-game fixture verified |
-| Physical iPad | Installed and actively tested; battle cursor and first-Goomba battle verified, with one clean replay of an intermittently delayed early-game progression route |
-| Physical iPhone | Not yet verified |
-| Public binary distribution | Not available; packaging, rights, and final device acceptance remain open |
+| Physical iPad | Installed and actively tested; battle cursor, first-Goomba battle, longer controller play, and one clean replay of the intermittent early progression route verified |
+| Physical iPhone | Current clean build installed and launched; private test ROM/save migrated, with hands-on touch and gameplay acceptance open |
+| Public binary distribution | Not yet available; ROM-free IPA packaging, rights review, and final device acceptance remain open |
 
-The physical-iPad build is **not release-accepted yet**. Earlier runs intermittently delayed or stalled during the Goompa return-to-village sequence; one instrumented replay completed normally, and two more clean passes are required before closing that gate. The latest exercised audio route did not reproduce the former crackle, but chapter-spanning listening and physical controller testing remain open.
+Current device testing covers early battles, a 16-minute Kishi V2 session, and one clean instrumented replay of the intermittently delayed Goompa return route. Two more targeted progression replays, longer listening, complete controller mapping/reconnect, and physical-iPhone hands-on acceptance remain before a public binary release.
 
 See [Current status](docs/STATUS.md), [Technical debt](docs/TECH-DEBT.md), and the [Release checklist](docs/RELEASE_CHECKLIST.md) for dated evidence and the remaining gates.
 
@@ -120,14 +116,14 @@ PaperPad provides every standard N64 input on screen: analog stick, D-pad, A, B,
 
 - **Menu:** the persistent `•••` button opens PaperPad settings and support actions.
 - **Touch controls:** show or hide the gameplay overlay and adjust its opacity.
-- **Layout editor:** move controls without snapping their centers to the initial touch point; reset restores the current device-class defaults.
+- **Layout editor:** move controls without snapping their centers to the initial touch point. D-pad and C buttons move individually by default; select one and choose **Link** to move that four-button cluster together, or **Unlink** to return to individual placement. Reset restores the current device-class defaults.
 - **Resolution:** choose Auto, 1x, 2x, 3x, or 4x internal rendering. Auto reports its current renderer-confirmed scale and dimensions and may exceed 4x when the display permits it.
 - **Framing:** Original preserves the largest centered 4:3 presentation. Fill Screen center-crops that presentation and may crop image edges on wider displays.
 - **Volume:** adjust and persist master output volume.
 - **Diagnostics:** create a reviewable text report through the system share sheet.
 - **ROM management:** replace or remove the privately stored game ROM.
 
-Opening the menu, Settings, share sheet, or ROM picker clears held input and hides gameplay touch targets. Dismissing the sheet restores them only when Touch Controls is enabled. When a hardware controller is connected, the iOS build hides the gameplay overlay while keeping the menu available, then restores touch controls on disconnect; the handoff is implemented but still awaits physical-controller acceptance.
+Opening the menu, Settings, share sheet, or ROM picker clears held input and hides gameplay touch targets. Dismissing the sheet restores them only when Touch Controls is enabled. When a hardware controller is connected, the iOS build hides the gameplay overlay while keeping the menu available, then restores touch controls on disconnect; basic physical-controller play is verified, while reconnect and complete mapping acceptance remain open.
 
 ### Keyboard and controller bindings
 
@@ -138,26 +134,7 @@ Opening the menu, Settings, share sheet, or ROM picker clears held input and hid
 | L / R | `Q` / `E` | Analog stick | Arrow keys |
 | D-pad | `W` `A` `S` `D` | C-buttons | `I` `J` `K` `L` |
 
-SDL-compatible controllers use the left stick, D-pad, face buttons, shoulders, left trigger for Z, and right stick for the C-buttons. Physical iOS controller mapping, hot-plug, and reconnect testing remain open.
-
-## Current screenshots
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="docs/release-audit/17-paperpad-ipad-final-diagnostics-share.png" alt="PaperPad diagnostics share sheet over gameplay on iPad">
-    </td>
-    <td width="50%">
-      <img src="docs/release-audit/25-paperpad-iphone-controls-separated-2026-08-11.jpg" alt="PaperPad compact iPhone touch layout">
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Diagnostics without leaving the game</strong><br>Review and share bounded current/previous-session logs.</td>
-    <td align="center"><strong>Separate phone and tablet layouts</strong><br>Every N64 input remains reachable in landscape.</td>
-  </tr>
-</table>
-
-The screenshots use a locally supplied game copy that is not part of this repository. More dated engineering captures are retained in [`docs/release-audit/`](docs/release-audit/).
+SDL-compatible controllers use the left stick, D-pad, face buttons, shoulders, left trigger for Z, and right stick for the C-buttons. A physical Kishi V2 session verified analog plus A/B/Z/L/R/Start during sustained play. D-pad, all C directions, hot-plug, and reconnect still require targeted acceptance.
 
 ## What works
 
@@ -232,7 +209,7 @@ No. You must provide your own legally obtained, unmodified Paper Mario (US) 1.0 
 <details>
 <summary><strong>Is there an IPA or App Store build?</strong></summary>
 
-No public binary is available. The repository currently supports local source builds. Any future IPA must be ROM-free, audited, and separately signed for installation.
+Not yet. A ROM-free IPA is planned after final packaging and device acceptance. Until then, the repository supports local source builds. PaperPad never includes game data; users must import their own supported ROM.
 </details>
 
 <details>
@@ -250,7 +227,7 @@ Higher internal resolution improves polygon edges and sampling. It cannot add de
 <details>
 <summary><strong>Does it support physical controllers?</strong></summary>
 
-Controller mappings and touch-overlay handoff are implemented through SDL. macOS controller input is exercised; physical iPhone/iPad mapping, reconnect, and sustained gameplay remain release checks.
+Controller mappings and touch-overlay handoff are implemented through SDL. A physical Kishi V2 has completed a longer iPad gameplay session using analog plus A/B/Z/L/R/Start. D-pad, all C directions, reconnect, and iPhone controller behavior remain release checks.
 </details>
 
 <details>

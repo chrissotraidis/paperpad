@@ -29,6 +29,7 @@ endif()
 
 get_filename_component(PAPERPAD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 set(PM_RECOMP_OUT "${PAPERPAD_ROOT}/generated/aot/paper_mario_recomp_out")
+set(PM_AUDIO_RSP_SOURCE "${PAPERPAD_ROOT}/generated/aot/rsp/n_aspMain.cpp")
 set(PAPERPAD_RECUT "${PAPERPAD_ROOT}/ref/paper-mario-recut")
 set(PAPERPAD_RUNTIME "${PAPERPAD_RECUT}/lib/N64ModernRuntime")
 set(PAPERPAD_RENDERER "${PAPERPAD_RECUT}/lib/rt64")
@@ -37,6 +38,12 @@ set(PAPERPAD_ZSTD_SOURCE_DIR "${PAPERPAD_ROOT}/ref/zstd" CACHE PATH "Complete zs
 if (NOT EXISTS "${PM_RECOMP_OUT}/lookup.cpp")
     message(FATAL_ERROR
         "Missing generated Paper Mario recomp output at ${PM_RECOMP_OUT}. "
+        "Generate it locally from your legally dumped Paper Mario (U) ROM: "
+        "scripts/generate-game.sh")
+endif()
+if (NOT EXISTS "${PM_AUDIO_RSP_SOURCE}")
+    message(FATAL_ERROR
+        "Missing generated Paper Mario audio RSP source at ${PM_AUDIO_RSP_SOURCE}. "
         "Generate it locally from your legally dumped Paper Mario (U) ROM: "
         "scripts/generate-game.sh")
 endif()
@@ -113,12 +120,14 @@ target_include_directories(RecompiledFuncs PRIVATE
 
 add_executable(PaperPad
     src/paperpad_main.cpp
+    src/paperpad_game_hooks.cpp
     src/paperpad_paths.mm
     src/paper_rt64_context.cpp
     src/paper_stubs.cpp
     src/register_overlays.cpp
     src/builtin_texture_pack.cpp
     "${PM_RECOMP_OUT}/lookup.cpp"
+    "${PM_AUDIO_RSP_SOURCE}"
 )
 
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")

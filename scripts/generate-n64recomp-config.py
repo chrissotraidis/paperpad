@@ -115,7 +115,7 @@ entrypoint = 0x80025C00
 elf_path = "{ELF}"
 rom_file_path = "{ROM}"
 output_func_path = "{ROOT / "generated/aot/paper_mario_recomp_out"}"
-recomp_include = "#include <stdio.h>\\n#include \\"recomp.h\\""
+recomp_include = "#include <stdio.h>\\n#include \\"recomp.h\\"\\n#include \\"paperpad_game_hooks.h\\""
 unpaired_lo16_warnings = false
 
 # Zero-sized global functions: size inferred from the next symbol in section.
@@ -174,6 +174,29 @@ text = "yield_self_1ms(rdram);"
 func = "nuGfxTaskAllEndWait"
 before_vram = 0x8005F2D8
 text = "yield_self_1ms(rdram);"
+
+# Use the original US 1.0 projection math without depending on the generated
+# transform_point call path. This is a supported recomp hook, not a game-data
+# edit or a per-HUD coordinate offset.
+[[patches.hook]]
+func = "get_screen_coords"
+before_vram = 0x8002E538
+text = "paperpad_get_screen_coords(rdram, ctx); return;"
+
+# Observe the completed game-loop step on the guest thread. Calls between
+# generated functions bypass the runtime overlay lookup, so the maintained
+# hook must live at the actual generated return boundary.
+[[patches.hook]]
+func = "step_game_loop"
+before_vram = 0x800269D8
+text = "paperpad_trace_game_loop(rdram, ctx);"
+
+# Capture NpcMoveTo's unmodified result and movement state at its single return
+# boundary. This is diagnostic-only and does not change NPC or script state.
+[[patches.hook]]
+func = "NpcMoveTo"
+before_vram = 0x802CE414
+text = "paperpad_trace_npc_move_to(rdram, ctx);"
 
 
 # Anti-piracy obfuscation wrappers read cartridge hardware (PI status and

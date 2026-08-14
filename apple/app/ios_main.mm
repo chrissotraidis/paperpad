@@ -71,16 +71,16 @@ std::array<TouchControl, kControlCount> defaultControls() {
             {"d_down", "\u2193", ControlKind::Button, 0x0400, 0.080, 0.665, 0.032, 0.42, true},
             {"d_left", "\u2190", ControlKind::Button, 0x0200, 0.040, 0.608, 0.032, 0.42, true},
             {"d_right", "\u2192", ControlKind::Button, 0x0100, 0.120, 0.608, 0.032, 0.42, true},
-            {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.903, 0.805, 0.033, 0.42, true},
-            {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.902, 0.905, 0.033, 0.42, true},
-            {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.857, 0.854, 0.033, 0.42, true},
-            {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.948, 0.853, 0.033, 0.42, true},
+            {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.9036, 0.8048, 0.033, 0.42, true},
+            {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.9036, 0.9098, 0.033, 0.42, true},
+            {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.8610, 0.8573, 0.033, 0.42, true},
+            {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.9462, 0.8573, 0.033, 0.42, true},
             {"a", "A", ControlKind::Button, 0x8000, 0.893, 0.693, 0.048, 0.48, true},
             {"b", "B", ControlKind::Button, 0x4000, 0.826, 0.635, 0.048, 0.48, true},
-            {"z", "Z", ControlKind::Button, 0x2000, 0.890, 0.560, 0.048, 0.44, true},
+            {"z", "Z", ControlKind::Button, 0x2000, 0.897, 0.581, 0.048, 0.44, true},
             {"l", "L", ControlKind::Button, 0x0020, 0.941, 0.460, 0.041, 0.38, true},
-            {"r", "R", ControlKind::Button, 0x0010, 0.941, 0.380, 0.041, 0.38, true},
-            {"start", "START", ControlKind::Button, 0x1000, 0.865, 0.380, 0.033, 0.40, true},
+            {"r", "R", ControlKind::Button, 0x0010, 0.941, 0.374, 0.041, 0.38, true},
+            {"start", "START", ControlKind::Button, 0x1000, 0.942, 0.291, 0.033, 0.40, true},
         }};
     }
     // The phone radii normalize HarkinianPad's accepted 116-point stick,
@@ -88,17 +88,17 @@ std::array<TouchControl, kControlCount> defaultControls() {
     // single Z stays in the right face cluster so the left thumb can move.
     return {{
         {"stick", "", ControlKind::Stick, 0x0000, 0.125, 0.722, 0.148, 0.38, true},
-        {"d_up", "\u2191", ControlKind::Button, 0x0800, 0.131, 0.365, 0.056, 0.38, true},
-        {"d_down", "\u2193", ControlKind::Button, 0x0400, 0.131, 0.502, 0.056, 0.38, true},
-        {"d_left", "\u2190", ControlKind::Button, 0x0200, 0.080, 0.434, 0.056, 0.38, true},
-        {"d_right", "\u2192", ControlKind::Button, 0x0100, 0.182, 0.434, 0.056, 0.38, true},
+        {"d_up", "\u2191", ControlKind::Button, 0x0800, 0.131, 0.356, 0.056, 0.38, true},
+        {"d_down", "\u2193", ControlKind::Button, 0x0400, 0.131, 0.512, 0.056, 0.38, true},
+        {"d_left", "\u2190", ControlKind::Button, 0x0200, 0.071, 0.434, 0.056, 0.38, true},
+        {"d_right", "\u2192", ControlKind::Button, 0x0100, 0.191, 0.434, 0.056, 0.38, true},
         // Keep every right-hand target physically separate. Shoulder buttons
         // are wider than their nominal radius, so their vertical spacing must
         // also leave room for the C cluster below them.
-        {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.914, 0.410, 0.051, 0.52, true},
-        {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.914, 0.660, 0.051, 0.52, true},
-        {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.871, 0.535, 0.051, 0.52, true},
-        {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.957, 0.535, 0.051, 0.52, true},
+        {"c_up", "\u2191", ControlKind::Button, 0x0008, 0.914, 0.473, 0.051, 0.52, true},
+        {"c_down", "\u2193", ControlKind::Button, 0x0004, 0.914, 0.597, 0.051, 0.52, true},
+        {"c_left", "\u2190", ControlKind::Button, 0x0002, 0.884, 0.535, 0.051, 0.52, true},
+        {"c_right", "\u2192", ControlKind::Button, 0x0001, 0.944, 0.535, 0.051, 0.52, true},
         {"a", "A", ControlKind::Button, 0x8000, 0.925, 0.820, 0.066, 0.58, true},
         {"b", "B", ControlKind::Button, 0x4000, 0.835, 0.790, 0.066, 0.58, true},
         {"z", "Z", ControlKind::Button, 0x2000, 0.820, 0.630, 0.066, 0.40, true},
@@ -110,8 +110,8 @@ std::array<TouchControl, kControlCount> defaultControls() {
 
 NSString* layoutDefaultsKey() {
     return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad
-        ? @"paperpad.touch.layout.ipad.v3"
-        : @"paperpad.touch.layout.iphone.v6";
+        ? @"paperpad.touch.layout.ipad.v4"
+        : @"paperpad.touch.layout.iphone.v8";
 }
 
 NSString* settingsDefaultsKey() {
@@ -148,6 +148,10 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     CGPoint _stickKnob;
     BOOL _editing;
     BOOL _hasUndo;
+    BOOL _dPadLinked;
+    BOOL _cButtonsLinked;
+    BOOL _undoDPadLinked;
+    BOOL _undoCButtonsLinked;
     NSInteger _selected;
     BOOL _gameplayControlsEnabled;
     BOOL _physicalControllerConnected;
@@ -226,6 +230,28 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
            std::strncmp(control.key, "c_", 2) == 0;
 }
 
+- (BOOL)isControlInSelectedMoveGroup:(NSInteger)index {
+    if (_selected < 0 || _selected >= (NSInteger)kControlCount ||
+        index < 0 || index >= (NSInteger)kControlCount) return NO;
+    const TouchControl& selected = _controls[_selected];
+    const TouchControl& candidate = _controls[index];
+    if (_dPadLinked && std::strncmp(selected.key, "d_", 2) == 0) {
+        return std::strncmp(candidate.key, "d_", 2) == 0;
+    }
+    if (_cButtonsLinked && std::strncmp(selected.key, "c_", 2) == 0) {
+        return std::strncmp(candidate.key, "c_", 2) == 0;
+    }
+    return index == _selected;
+}
+
+- (BOOL)isSelectedDirectionalGroupLinked {
+    if (_selected < 0 || _selected >= (NSInteger)kControlCount) return NO;
+    const TouchControl& selected = _controls[_selected];
+    if (std::strncmp(selected.key, "d_", 2) == 0) return _dPadLinked;
+    if (std::strncmp(selected.key, "c_", 2) == 0) return _cButtonsLinked;
+    return NO;
+}
+
 - (UIColor*)accentColorForControl:(const TouchControl&)control {
     if (std::strcmp(control.key, "a") == 0) {
         return [UIColor colorWithRed:0.10 green:0.34 blue:0.88 alpha:1.0];
@@ -276,6 +302,11 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 - (void)loadLayout {
     NSDictionary* saved = [NSUserDefaults.standardUserDefaults dictionaryForKey:layoutDefaultsKey()];
     if (![saved isKindOfClass:NSDictionary.class]) return;
+    NSDictionary* groups = saved[@"_groups"];
+    if ([groups isKindOfClass:NSDictionary.class]) {
+        _dPadLinked = [groups[@"dPadLinked"] boolValue];
+        _cButtonsLinked = [groups[@"cButtonsLinked"] boolValue];
+    }
     for (TouchControl& control : _controls) {
         NSString* key = [NSString stringWithUTF8String:control.key];
         NSDictionary* value = saved[key];
@@ -298,6 +329,10 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             @"visible": @(control.visible),
         };
     }
+    saved[@"_groups"] = @{
+        @"dPadLinked": @(_dPadLinked),
+        @"cButtonsLinked": @(_cButtonsLinked),
+    };
     [NSUserDefaults.standardUserDefaults setObject:saved forKey:layoutDefaultsKey()];
 }
 
@@ -305,7 +340,9 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     BOOL hasSelection = _selected >= 0 && _selected < (NSInteger)kControlCount;
     BOOL selectedVisible = hasSelection ? _controls[_selected].visible : YES;
     BOOL selectedHideable = hasSelection && _controls[_selected].kind != ControlKind::Stick;
-    return @[@"DONE", _hasUndo ? @"UNDO" : @"RESET", @"\u2212", @"+", @"FADE",
+    NSString* linkLabel = !hasSelection || ![self isDirectionalControl:_controls[_selected]]
+        ? @"SINGLE" : ([self isSelectedDirectionalGroupLinked] ? @"UNLINK" : @"LINK");
+    return @[@"DONE", _hasUndo ? @"UNDO" : @"RESET", linkLabel, @"\u2212", @"+", @"FADE",
              !selectedHideable ? @"FIXED" : (selectedVisible ? @"HIDE" : @"SHOW")];
 }
 
@@ -324,8 +361,8 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 
 - (CGRect)toolbarRectAtIndex:(NSInteger)index {
     CGRect usable = [self usableBounds];
-    CGFloat width = MIN(64.0, usable.size.width / 7.0);
-    CGFloat total = width * 6.0;
+    CGFloat width = MIN(64.0, usable.size.width / 8.0);
+    CGFloat total = width * 7.0;
     return CGRectMake(CGRectGetMidX(usable) - total / 2.0 + width * index,
                       CGRectGetMinY(usable) + 4.0, width, 44.0);
 }
@@ -375,13 +412,14 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             ? [accent colorWithAlphaComponent:pressed ? MIN(0.92, alpha + 0.24) : alpha]
             : [UIColor colorWithWhite:pressed ? 0.34 : 0.04
                                  alpha:pressed ? MIN(0.88, alpha + 0.30) : alpha];
-        UIColor* stroke = (index == _selected && _editing)
+        const BOOL selectedForEditing = _editing && [self isControlInSelectedMoveGroup:index];
+        UIColor* stroke = selectedForEditing
             ? [UIColor colorWithRed:1.0 green:0.82 blue:0.18 alpha:0.95]
             : [UIColor colorWithWhite:1.0 alpha:MIN(0.88, alpha + 0.28)];
         [fill setFill];
         [controlPath fill];
         [stroke setStroke];
-        controlPath.lineWidth = index == _selected && _editing ? 3.0 : 2.0;
+        controlPath.lineWidth = selectedForEditing ? 3.0 : 2.0;
         if (!control.visible) CGContextSetLineDash(context, 0, (CGFloat[]){4.0, 3.0}, 2);
         [controlPath stroke];
         CGContextSetLineDash(context, 0, nullptr, 0);
@@ -409,7 +447,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     if (_editing) {
         NSArray<NSString*>* labels = [self toolbarLabels];
         CGRect first = [self toolbarRectAtIndex:0];
-        CGRect last = [self toolbarRectAtIndex:5];
+        CGRect last = [self toolbarRectAtIndex:6];
         CGRect toolbar = CGRectUnion(first, last);
         UIBezierPath* toolbarPath = [UIBezierPath bezierPathWithRoundedRect:toolbar
                                                               cornerRadius:10.0];
@@ -418,7 +456,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         [[UIColor colorWithWhite:1.0 alpha:0.28] setStroke];
         toolbarPath.lineWidth = 1.0;
         [toolbarPath stroke];
-        for (NSInteger i = 0; i < 6; ++i) {
+        for (NSInteger i = 0; i < 7; ++i) {
             CGRect item = [self toolbarRectAtIndex:i];
             if (i > 0) {
                 CGFloat x = CGRectGetMinX(item);
@@ -532,7 +570,11 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 
 - (void)resetLayout {
     _undoControls = _controls;
+    _undoDPadLinked = _dPadLinked;
+    _undoCButtonsLinked = _cButtonsLinked;
     _controls = defaultControls();
+    _dPadLinked = NO;
+    _cButtonsLinked = NO;
     _hasUndo = YES;
     _editing = NO;
     _utilityButton.hidden = NO;
@@ -555,7 +597,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         }
         return NO;
     }
-    for (NSInteger index = 0; index < 6; ++index) {
+    for (NSInteger index = 0; index < 7; ++index) {
         if (!CGRectContainsPoint([self toolbarRectAtIndex:index], point)) continue;
         TouchControl& selected = _controls[MAX(0, _selected)];
         switch (index) {
@@ -568,15 +610,30 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             case 1:
                 if (_hasUndo) {
                     std::swap(_controls, _undoControls);
+                    std::swap(_dPadLinked, _undoDPadLinked);
+                    std::swap(_cButtonsLinked, _undoCButtonsLinked);
                     _hasUndo = NO;
                 } else {
                     _undoControls = _controls;
+                    _undoDPadLinked = _dPadLinked;
+                    _undoCButtonsLinked = _cButtonsLinked;
                     _controls = defaultControls();
+                    _dPadLinked = NO;
+                    _cButtonsLinked = NO;
                     _hasUndo = YES;
                 }
                 [self saveLayout];
                 break;
             case 2:
+                if (std::strncmp(selected.key, "d_", 2) == 0) {
+                    _dPadLinked = !_dPadLinked;
+                    [self saveLayout];
+                } else if (std::strncmp(selected.key, "c_", 2) == 0) {
+                    _cButtonsLinked = !_cButtonsLinked;
+                    [self saveLayout];
+                }
+                break;
+            case 3:
             {
                 CGFloat baseSize = [self defaultSizeForControl:selected];
                 selected.size = MAX(baseSize * 0.70, selected.size - baseSize * 0.10);
@@ -584,7 +641,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
                 [self saveLayout];
                 break;
             }
-            case 3:
+            case 4:
             {
                 CGFloat baseSize = [self defaultSizeForControl:selected];
                 selected.size = MIN(baseSize * 1.50, selected.size + baseSize * 0.10);
@@ -592,13 +649,13 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
                 [self saveLayout];
                 break;
             }
-            case 4:
+            case 5:
                 selected.opacity += 0.14;
                 if (selected.opacity > 0.78) selected.opacity = 0.24;
                 _hasUndo = NO;
                 [self saveLayout];
                 break;
-            case 5:
+            case 6:
                 if (selected.kind != ControlKind::Stick) {
                     selected.visible = !selected.visible;
                 }
@@ -630,8 +687,38 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     if (_selected == NSNotFound) return;
     CGRect usable = [self usableBounds];
     TouchControl& control = _controls[_selected];
-    control.x = MAX(0.0, MIN(1.0, (point.x - CGRectGetMinX(usable)) / usable.size.width));
-    control.y = MAX(0.0, MIN(1.0, (point.y - CGRectGetMinY(usable)) / usable.size.height));
+    const CGFloat desiredX = (point.x - CGRectGetMinX(usable)) / usable.size.width;
+    const CGFloat desiredY = (point.y - CGRectGetMinY(usable)) / usable.size.height;
+    if ([self isDirectionalControl:control] && [self isSelectedDirectionalGroupLinked]) {
+        const char* group = std::strncmp(control.key, "d_", 2) == 0 ? "d_" : "c_";
+        CGFloat minimumDeltaX = -CGFLOAT_MAX;
+        CGFloat maximumDeltaX = CGFLOAT_MAX;
+        CGFloat minimumDeltaY = -CGFLOAT_MAX;
+        CGFloat maximumDeltaY = CGFLOAT_MAX;
+        for (const TouchControl& candidate : _controls) {
+            if (std::strncmp(candidate.key, group, 2) != 0) continue;
+            const CGFloat radius = [self radiusForControl:candidate];
+            const CGFloat horizontalMargin = radius / usable.size.width;
+            const CGFloat verticalMargin = radius / usable.size.height;
+            minimumDeltaX = MAX(minimumDeltaX, horizontalMargin - candidate.x);
+            maximumDeltaX = MIN(maximumDeltaX, 1.0 - horizontalMargin - candidate.x);
+            minimumDeltaY = MAX(minimumDeltaY, verticalMargin - candidate.y);
+            maximumDeltaY = MIN(maximumDeltaY, 1.0 - verticalMargin - candidate.y);
+        }
+        const CGFloat deltaX = MAX(minimumDeltaX,
+            MIN(maximumDeltaX, desiredX - control.x));
+        const CGFloat deltaY = MAX(minimumDeltaY,
+            MIN(maximumDeltaY, desiredY - control.y));
+        for (TouchControl& candidate : _controls) {
+            if (std::strncmp(candidate.key, group, 2) == 0) {
+                candidate.x += deltaX;
+                candidate.y += deltaY;
+            }
+        }
+    } else {
+        control.x = MAX(0.0, MIN(1.0, desiredX));
+        control.y = MAX(0.0, MIN(1.0, desiredY));
+    }
     _hasUndo = NO;
     [self setNeedsDisplay];
 }
@@ -657,7 +744,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             }
             x = dx / radius;
             y = -dy / radius;
-            constexpr CGFloat deadzone = 0.12;
+            constexpr CGFloat deadzone = 0.16;
             const CGFloat normalizedLength = hypot(x, y);
             if (normalizedLength <= deadzone) {
                 x = 0.0;
@@ -667,7 +754,8 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
                 // Give the center of the stick a wider precision range without
                 // taking away full-speed movement at the edge. This makes
                 // name-entry and other grid selectors less eager to repeat.
-                const CGFloat responseLength = remappedLength * remappedLength;
+                const CGFloat responseLength = remappedLength * remappedLength
+                    * (0.75 + 0.25 * remappedLength);
                 const CGFloat scale = responseLength / normalizedLength;
                 x *= scale;
                 y *= scale;

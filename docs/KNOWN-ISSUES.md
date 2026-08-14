@@ -2,9 +2,42 @@
 
 The detailed entries below preserve the 2026-08-05 through 2026-08-06 failure
 investigations and fixes. They are historical evidence, not the current release
-status. See `docs/STATUS.md` for the 2026-08-11 acceptance boundary and open
+status. See `docs/STATUS.md` for the 2026-08-14 acceptance boundary and open
 gates. Entries marked fixed are expected to remain covered by the pinned ReCut
 snapshot or the maintained patch series.
+
+Current audio note: on 2026-08-12 PaperPad generated and selected Paper Mario's
+exact audio RSP entry at IMEM `0x1080` and preserved synchronous SP completion
+ordering. The next physical-iPad listening route reported no crackle. This
+supersedes the archive's older HLE-only implementation direction, but is one
+hands-on route rather than a full-game audio acceptance pass.
+
+Current crash note: the first physical cursor candidate correctly aligned the
+battle hand, but crashed after the first Goomba died on two consecutive runs.
+Both 2026-08-12 reports identify the temporary VI-thread battle diagnostic at
+the same HUD-pointer load while battle objects were being released. The
+diagnostic was removed without changing the projection fix; replacement binary
+`670ef740…` then completed the same battle once without crashing. This was a
+PaperPad instrumentation defect, not evidence that the US 1.0 game logic or
+the projection hook failed.
+
+Current progression note: the next physical run reproduced an abnormally slow
+Goompa gate opening and then stalled after Mario crossed, with dialogue and
+control still locked. The app, audio callbacks, and input logging continued.
+The first safe logger was ineffective because generated direct calls bypassed
+the overlay replacement. Diagnostic binary `5462f680…` instead observes the
+actual generated `step_game_loop` and `NpcMoveTo` return boundaries on the game
+thread. It changes no movement/script state and is installed for the next
+route. The cause remains open until that trace is captured; no timeout or
+scene-specific progression bypass is justified.
+
+The next 2026-08-13 physical replay did not reproduce the failure. QuickTime
+captured the route locally, and the matching diagnostic log shows every
+observed `NpcMoveTo` returning success before `EVS_ReturnToVillage` reached the
+normal badge-tutorial `SpeakToPlayer` wait. This rules out an unconditional
+movement translation bug but does not erase the earlier stalls. Treat the issue
+as intermittent until two additional complete physical routes pass or a marked
+failure provides a contrasting trace.
 
 ## macOS
 
@@ -48,11 +81,12 @@ snapshot or the maintained patch series.
 
    **Fresh physical evidence 2026-08-11 15:59**: the 82,919-byte current
    device log captured while the defect was audible held roughly 16–64 ms of
-   queued 48 kHz output, reported zero conversion errors, zero queue errors,
-   no interval above 100 ms, and sub-full-scale PCM. This rules out SDL queue
-   starvation, cache exhaustion, and output clipping as the observed cause.
+   queued 48 kHz output after sampled submissions, reported zero conversion
+   errors, zero queue errors, no interval above 100 ms, and sub-full-scale PCM.
+   This rules out output clipping and unbounded cache growth, but the sampled
+   post-submit value cannot exclude a brief queue drain between submissions.
    Do not mask the defect with another unmeasured buffer, gain, or filter
-   change.
+   change; measure the pre-submit minimum and zero-queue count first.
 
    Follow-up: integrate and validate a complete boot+audio RSP implementation,
    such as an iOS-capable ParaLLEl-RSP path, then compare bounded PCM and
