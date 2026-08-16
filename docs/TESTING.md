@@ -7,6 +7,18 @@ Historical dates use America/Chicago local time. The 2026-08-10 acceptance run
 was performed in Europe/Budapest; report timestamps embedded by the diagnostics
 file are UTC.
 
+## 2026-08-16 controller reconnect repair and Preview 2 release candidate
+
+| Gate | Evidence | Result |
+|---|---|---|
+| Backend identification | PaperPad opens and polls `SDL_GameController` handles directly. The adapter uses SDL2 current-device enumeration, device/handle instance IDs, and `SDL_GameControllerGetAttached`; no SDL3, direct Apple GameController ownership, or engine-managed controller layer is involved | Passed source audit; the repair follows this project's backend |
+| Deterministic controller regression | The CTest target simulates a missed removal with a held button and axis, a sole return, an additional controller, player-2 replacement, and foreground reconciliation. It verifies stale-slot removal, neutral input, player-1 preservation/reclamation, and next-free-slot assignment | Passed all single-controller, two-controller, held-input, missed-event, and foreground cases |
+| Runtime integration | Reconciliation runs at startup, on SDL add/remove/remap events, on foreground resume, and once per second while active. Assignment/release diagnostics include reason, instance ID, player slot, and device index/name. The SDL controller subsystem is never restarted | Passed source review and complete platform builds |
+| Build and repository gates | The focused CTest, complete Release macOS CMake build, ROM-free iOS Simulator build, signed physical-device build, strict signature check, prerequisite/source/repository-safety checks, and `git diff --check` passed | Passed automated release gates |
+| Preservation-safe iPad update | The release candidate used the existing bundle ID and installed in place without uninstalling or replacing the data container. Exact read-back comparisons before and after launch matched both private ROM files, ROM selection, the save and backup, and controller/touch preferences. The app reached renderer setup, foreground reconciliation, scene frame 1, and continuing game-loop/audio heartbeats | Passed build, sign, install, launch, boot, and protected-data preservation |
+| Physical controller acceptance | No controller was paired or driven during this release-candidate boot | Bluetooth reconnect, wired reconnect, natural-sleep/wake, full mapping, and two-physical-controller behavior remain hands-on acceptance |
+| Unsigned IPA | Two deterministic package runs matched SHA-256 `ea908c33fce6ba883acadff3ccc3025a1a7ef0284947c09cf98f3602af84d029`; the audit confirmed arm64 iPhoneOS 15.0, version 0.1.0 build 2, bundled privacy/notices/licenses/install/rights files, and no ROM/save/log/profile/signature/personal path | Passed public Preview 2 package gate |
+
 ## 2026-08-14 Preview 1 packaging and iPhone default capture
 
 | Gate | Evidence | Result |

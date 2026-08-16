@@ -34,7 +34,7 @@ Use this checklist for a public source update and again before any macOS or iPho
 
 ## Physical iPhone and iPad
 
-Preview 1 is a public ROM-free **unsigned** IPA for self-signing. Its package audit passed for arm64 iPhoneOS 15.0, version 0.1.0 build 1, bundled notices/privacy/licenses, and the absence of ROMs, saves, logs, profiles, signatures, personal paths, and non-system runtime dependencies. Its deterministic SHA-256 is `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`.
+Preview 2 is a public ROM-free **unsigned** IPA for self-signing. Its package audit passed for arm64 iPhoneOS 15.0, version 0.1.0 build 2, bundled notices/privacy/licenses, and the absence of ROMs, saves, logs, profiles, signatures, personal paths, and non-system runtime dependencies. Its deterministic SHA-256 is `ea908c33fce6ba883acadff3ccc3025a1a7ef0284947c09cf98f3602af84d029`.
 
 Before a stable or maintainer-signed release:
 

@@ -62,13 +62,13 @@ After producing `build-ios-device/Release/PaperPad.app`, create the public self-
 
 ```sh
 scripts/package-unsigned-ipa.sh
-scripts/audit-ios-package.sh artifacts/PaperPad-v0.1.0-preview.1-unsigned.ipa
-shasum -a 256 -c artifacts/PaperPad-v0.1.0-preview.1-unsigned.ipa.sha256
+scripts/audit-ios-package.sh artifacts/PaperPad-v0.1.0-preview.2-unsigned.ipa
+(cd artifacts && shasum -a 256 -c PaperPad-v0.1.0-preview.2-unsigned.ipa.sha256)
 ```
 
 The packager removes the local development signature and provisioning profile, adds the install/rights documents and dependency licenses, normalizes archive timestamps, and refuses an IPA containing game data, saves, logs, signing material, unexpected runtime libraries, or personal build paths. The result remains under ignored `artifacts/`; attach it to the matching GitHub release rather than committing it.
 
-Preview 1's audited artifact is `PaperPad-v0.1.0-preview.1-unsigned.ipa` with SHA-256 `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`. It must be signed by the user before installation; see [INSTALL_IPA.md](INSTALL_IPA.md).
+Preview 2's audited artifact is `PaperPad-v0.1.0-preview.2-unsigned.ipa` with SHA-256 `ea908c33fce6ba883acadff3ccc3025a1a7ef0284947c09cf98f3602af84d029`. It must be signed by the user before installation; see [INSTALL_IPA.md](INSTALL_IPA.md).
 
 ## iOS Simulator install and first run
 

@@ -1,6 +1,6 @@
 # PaperPad status
 
-Updated 2026-08-14 (Europe/Budapest). This file distinguishes reproduced acceptance from planned work.
+Updated 2026-08-16 (Europe/Budapest). This file distinguishes reproduced acceptance from planned work.
 
 ## Current acceptance
 
@@ -9,12 +9,20 @@ Updated 2026-08-14 (Europe/Budapest). This file distinguishes reproduced accepta
 | Apple Silicon macOS | **Verified local source build** | ROM-free app build/signature check; launch through intro, name/file creation, and early gameplay; keyboard input; clean test quit |
 | iPhone Simulator | **Current development build verified** | 2026-08-11 in-place update preserved private data; current audio telemetry, live Auto 6x/1920×1440 status, 22 KiB diagnostics share/dismissal, modal touch restoration, touch-only name-entry `A → B → o`, and the corrected non-overlapping compact layout passed |
 | iPad Simulator | **Current development build verified** | Stateful audio PCM comparison, crash-log rotation, live Auto 7x/2240×1680 status, first-level diagnostics, modal touch restoration, borderless maximum-size 4:3 framing, private level-27 Toad Town loading/movement, a direct drawable/frame-pacing leak regression, and a no-input unattended-battle cursor-alignment route passed; earlier evidence covers File 1A/Mario's House at 4x |
-| Physical iPad | **Cursor/battle and longer controller play verified; one clean progression replay** | A 16m41s Kishi V2 session reached 30,000 game-loop frames with scene transitions and no crash, fatal/assert, or game-loop-stall line. Analog and A/B/Z/L/R/Start were observed; D-pad/C directions and reconnect were not. The 498 audio windows had no conversion/queue errors; one mid-session queue-depth excursion recovered. An earlier Goompa run delayed/stalled, while one QuickTime-observed replay completed normally. Two more clean targeted passes remain required |
+| Physical iPad | **Preview 2 release candidate installed in place and booted; physical reconnect open** | The signed build installed under the existing bundle ID without uninstalling or replacing the data container, launched into active gameplay, and remained live. Exact pre/post read-back comparisons preserved the existing ROM files, save and backup, ROM selection, and controller/touch preferences. Earlier Kishi V2 play verified analog and A/B/Z/L/R/Start; Bluetooth, wired, and natural-sleep reconnect were not exercised |
 | Physical iPhone | **Clean build installed and runtime verified; hands-on open** | The current ROM/save-free app was installed on an iPhone 14 after privately seeding the exact iPad test ROM and 128 KiB save. A clean in-place reinstall then initialized the recomp heap, renderer, project audio RSP, and game loop through an opening scene at the 2532×1170 native drawable. File-select/save visibility, touch ergonomics, controller behavior, audio, and lifecycle still require hands-on acceptance |
-| Public iOS preview | **ROM-free unsigned Preview 1 packaged** | `PaperPad-v0.1.0-preview.1-unsigned.ipa`; arm64 iPhoneOS 15.0; version 0.1.0 build 1; no ROM/save/log/profile/signature/personal path; bundled privacy manifest, notices, install guide, rights statement, and dependency licenses; deterministic SHA-256 `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee` |
-| Signed/notarized/TestFlight/App Store | **Not available** | Preview 1 requires user self-signing. Maintainer-signed, notarized, TestFlight, and App Store distribution remain open |
+| Public iOS preview | **ROM-free unsigned Preview 2 packaged** | `PaperPad-v0.1.0-preview.2-unsigned.ipa`; arm64 iPhoneOS 15.0; version 0.1.0 build 2; no ROM/save/log/profile/signature/personal path; bundled privacy manifest, notices, install guide, rights statement, and dependency licenses; deterministic SHA-256 `ea908c33fce6ba883acadff3ccc3025a1a7ef0284947c09cf98f3602af84d029` |
+| Signed/notarized/TestFlight/App Store | **Not available** | Preview 2 requires user self-signing. Maintainer-signed, notarized, TestFlight, and App Store distribution remain open |
 
-The tested build identifies as version 0.1.0 (build 1), profile `release`, bundle ID `com.chrissotraidis.paperpad` on iOS.
+The tested build identifies as version 0.1.0 (build 2), profile `release`, bundle ID `com.chrissotraidis.paperpad` on iOS.
+
+## Controller reconnect repair verified on 2026-08-16
+
+- PaperPad uses direct SDL2 `SDL_GameController` ownership. It does not use SDL3, own Apple's GameController framework directly, or delegate controller slots to the recompiled engine.
+- Reconciliation uses SDL2's supported attached-state check, current-device enumeration, and instance IDs. It runs for controller events, foreground resume, and a bounded active poll without restarting the controller subsystem.
+- Deterministic tests simulate a missed removal while a button and axis are held, then verify stale-slot removal, neutral input, and player-1 reclamation. Separate cases preserve player 1 when a second controller arrives or reconnects and cover foreground reconciliation.
+- Instance ID, player slot, device index, reason, and controller name are logged for assignment/release diagnosis.
+- The complete macOS build/test target, ROM-free iOS Simulator build, signed physical-device build, strict signature verification, repository audits, and exact in-place iPad boot passed. These are automated and host-observable proofs; no claim is made that physical Bluetooth, wired, or natural-sleep reconnect was exercised.
 
 ## Fixes verified in the 2026-08-11 iPad Simulator defect pass
 
@@ -30,7 +38,7 @@ The tested build identifies as version 0.1.0 (build 1), profile `release`, bundl
 - The iOS SDL window is borderless. Original preserves the largest centered 4:3 image. Fill Screen now center-crops only the completed 4:3 VI presentation instead of widening RT64's 3D projection. That keeps Paper Mario's game-projected 2D battle hand and target actor under the same final transform; physical confirmation is open.
 - Settings explains that Auto may exceed manual 4x, presents Edit/Reset/Diagnostics/ROM as native action rows, and uses a filled Done button. Crisp 2D was removed after physical testing found it visibly worse; the stable smooth path is fixed and low-resolution source text remains a known limitation.
 - The README keeps only two primary verification images. A private level-27 fixture was merged into File 2 on the physical iPad using checksum-valid sector rotation. Active File 1's complete sector remained byte-for-byte unchanged, and exact pre/post-update read-back matched merged save SHA-256 `c7bd66d4e2e971796f636dab6abdedc39d06410a3c142a953168c402bf61e398`. The donor remains excluded from source and packages; visible File 2 load acceptance is open.
-- SDL controller mappings cover hot-plug, left stick/D-pad, A/B/Start, L/R/Z, and right-stick C buttons. A Kishi V2 session exercised analog and A/B/Z/L/R/Start for 16m41s. The installed iOS build hides gameplay touch controls while connected and keeps the utility menu available. Targeted D-pad/C-direction and disconnect/reconnect restoration acceptance remains open.
+- SDL controller mappings cover hot-plug, left stick/D-pad, A/B/Start, L/R/Z, and right-stick C buttons. A Kishi V2 session exercised analog and A/B/Z/L/R/Start for 16m41s. Automated stale-handle, reconnect, held-input release, two-controller, and foreground-resume cases now pass. Targeted D-pad/C-direction plus physical Bluetooth, wired, and natural-sleep reconnect acceptance remains open.
 - In the touch-layout editor, D-pad and C buttons move individually by default. A persisted Link/Unlink action optionally binds only the selected four-button cluster for movement. `iphone.v8` corrects the physically rejected phone spacing; the accepted iPad arrangement remains independent in `ipad.v4`.
 - The final Preview 1 phone defaults reproduce the complete `iphone.v8` layout exported from the attached physical iPhone 14 on 2026-08-14. All 15 saved positions, A/B sizes, opacity/visibility, and the unlinked D-pad/C-button state were captured directly; iPad defaults remain unchanged.
 - A longer level-27 run exposed a distinct RT64 swap-chain leak despite stable VM-region counts: 42,354 drawables and 757,314 FramePacing command buffers remained live because each slot replacement lost its previous retained owner. The maintained fix replayed cleanly; the rebuilt ROM-free app held exactly 3 drawables, 3 lifetimes, and 72 command buffers across thousands of frames, while physical footprint ended at 130.1 MiB below a 145.3 MiB peak.
@@ -81,11 +89,11 @@ Visual comparisons against original Paper Mario references found matching theate
 
 1. Replay the Goompa return route twice more on the diagnostic build. Each sequence must complete, Start must respond promptly, and dialogue, movement, and NPC interaction must restore. Mark and capture any failure live; do not add a timeout or scene-specific bypass.
 2. On the physical iPhone, confirm the copied File 1/File 2 save appears, inspect the independent compact touch defaults, exercise grouped D/C layout movement, and run title/file/gameplay/audio plus background/foreground acceptance.
-3. Target-test physical-controller D-pad, all C directions, disconnect/reconnect, overlay restoration, and menu availability. Separately decide whether to add the reference hold-to-latch Z gesture and per-control VoiceOver elements.
+3. Target-test physical-controller D-pad, all C directions, Bluetooth and wired disconnect/reconnect, natural sleep/wake, overlay restoration, and menu availability. Separately decide whether to add the reference hold-to-latch Z gesture and per-control VoiceOver elements.
 4. Run a complete-game or chapter-spanning regression and a 60+ minute soak on both device classes. Reopen audio immediately if flutter/static recurs.
 5. Use the private File 2 to document named middle/late checkpoints, battles, transitions, music, saving, and lifecycle recovery without changing File 1 or redistributing the fixture.
 6. Clean up the non-blocking iOS launch warnings: unbalanced UIKit appearance transition and duplicate Simulator accessibility class.
 7. Investigate the RT64 `RenderPool in Metal is not implemented currently` diagnostic and document whether the feature is unused or needs an implementation.
-8. Before any stable or maintainer-signed distribution, complete physical accessibility acceptance and the appropriate signing/notarization, TestFlight, or App Store review. Preview 1 is deliberately unsigned and includes the audited notices, privacy manifest, and license bundle.
+8. Before any stable or maintainer-signed distribution, complete physical accessibility acceptance and the appropriate signing/notarization, TestFlight, or App Store review. Preview 2 is deliberately unsigned and includes the audited notices, privacy manifest, and license bundle.
 
 Historical failures and detailed investigations remain in [TESTING.md](TESTING.md) and [KNOWN-ISSUES.md](KNOWN-ISSUES.md). They are not evidence that the current build still fails.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 APP="${PAPERPAD_IOS_DEVICE_APP:-$ROOT/build-ios-device/Release/PaperPad.app}"
-OUTPUT="${PAPERPAD_UNSIGNED_IPA_OUTPUT:-$ROOT/artifacts/PaperPad-v0.1.0-preview.1-unsigned.ipa}"
+OUTPUT="${PAPERPAD_UNSIGNED_IPA_OUTPUT:-$ROOT/artifacts/PaperPad-v0.1.0-preview.2-unsigned.ipa}"
 
 [[ "$APP" = /* ]] || APP="$ROOT/$APP"
 [[ "$OUTPUT" = /* ]] || OUTPUT="$ROOT/$OUTPUT"

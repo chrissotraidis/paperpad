@@ -17,9 +17,11 @@ hands-on pass and must be reopened if it recurs.
   mid-session queue-depth excursion exceeded 100 ms and then recovered; it is
   retained as regression evidence, not treated as an audible failure without
   a matching report.
-- A Kishi V2 exercised analog plus A/B/Z/L/R/Start. D-pad, all C directions,
-  controller disconnect/reconnect, and overlay restoration remain targeted
-  acceptance checks rather than a reason to redesign the input path.
+- A Kishi V2 exercised analog plus A/B/Z/L/R/Start. Deterministic SDL2 tests now
+  cover stale-handle release, held-input clearing, player-slot preservation,
+  reconnect, and foreground resume. D-pad, all C directions, physical Bluetooth
+  and wired reconnect, natural sleep/wake, and overlay restoration remain
+  targeted acceptance checks rather than a reason to redesign the input path.
 - The first grouped-layout iteration was rejected on the physical iPhone: its
   C cluster was too loose, its D-pad was too tight, and group movement was
   mandatory. `iphone.v8` corrects the phone-only geometry and restores

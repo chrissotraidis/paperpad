@@ -1,12 +1,12 @@
 # Install the unsigned PaperPad IPA
 
-PaperPad `v0.1.0-preview.1` is distributed as a **ROM-free, unsigned** IPA. It is not an App Store or TestFlight build. You must sign it with your own Apple credentials before installing it on an iPhone or iPad.
+PaperPad `v0.1.0-preview.2` is distributed as a **ROM-free, unsigned** IPA. It is not an App Store or TestFlight build. You must sign it with your own Apple credentials before installing it on an iPhone or iPad.
 
 ## Before installing
 
 - Use an arm64 iPhone or iPad running iOS/iPadOS 15 or newer.
-- Download `PaperPad-v0.1.0-preview.1-unsigned.ipa` and its `.sha256` file from the matching GitHub release.
-- Verify the checksum with `shasum -a 256 -c PaperPad-v0.1.0-preview.1-unsigned.ipa.sha256` on macOS.
+- Download `PaperPad-v0.1.0-preview.2-unsigned.ipa` and its `.sha256` file from the matching GitHub release.
+- Verify the checksum with `shasum -a 256 -c PaperPad-v0.1.0-preview.2-unsigned.ipa.sha256` on macOS from the directory containing both downloaded files.
 - Have your own legally obtained, unmodified Paper Mario (US) 1.0 ROM ready in Files. The IPA does not contain game data.
 
 ## Sign and install
