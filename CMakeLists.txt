@@ -2,8 +2,10 @@ cmake_minimum_required(VERSION 3.20)
 
 project(PaperPad LANGUAGES C CXX)
 
+include(CTest)
+
 set(PAPERPAD_VERSION "0.1.0")
-set(PAPERPAD_BUILD_NUMBER "1")
+set(PAPERPAD_BUILD_NUMBER "2")
 set(PAPERPAD_BUILD_PROFILE "release")
 
 if (APPLE)
@@ -128,6 +130,7 @@ target_include_directories(RecompiledFuncs PRIVATE
 )
 
 add_executable(PaperPad
+    src/controller_slots.cpp
     src/paperpad_main.cpp
     src/paperpad_game_hooks.cpp
     src/paperpad_paths.mm
@@ -138,6 +141,14 @@ add_executable(PaperPad
     "${PM_RECOMP_OUT}/lookup.cpp"
     "${PM_AUDIO_RSP_SOURCE}"
 )
+
+if (BUILD_TESTING)
+    add_executable(paperpad_controller_slots_test
+        tests/controller_slots_test.cpp
+        src/controller_slots.cpp)
+    target_include_directories(paperpad_controller_slots_test PRIVATE "${PAPERPAD_ROOT}/src")
+    add_test(NAME paperpad_controller_slots COMMAND paperpad_controller_slots_test)
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     target_sources(PaperPad PRIVATE

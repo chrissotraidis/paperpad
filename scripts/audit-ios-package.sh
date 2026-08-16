@@ -56,7 +56,7 @@ plist_value() {
 }
 [[ "$(plist_value CFBundleIdentifier)" = com.chrissotraidis.paperpad ]] || fail "unexpected bundle identifier"
 [[ "$(plist_value CFBundleShortVersionString)" = 0.1.0 ]] || fail "unexpected app version"
-[[ "$(plist_value CFBundleVersion)" = 1 ]] || fail "unexpected app build number"
+[[ "$(plist_value CFBundleVersion)" = 2 ]] || fail "unexpected app build number"
 [[ "$(plist_value MinimumOSVersion)" = 15.0 ]] || fail "unexpected Info.plist minimum OS"
 [[ "$(plist_value ITSAppUsesNonExemptEncryption)" = false ]] || fail "encryption declaration is not false"
 

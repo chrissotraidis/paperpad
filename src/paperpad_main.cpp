@@ -36,6 +36,7 @@
 #include "ultramodern/ultramodern.hpp"
 
 #include "paperpad_input.h"
+#include "controller_slots.h"
 
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y);
@@ -89,7 +90,6 @@ namespace {
     constexpr uint16_t R_CBUTTONS = 0x0001;
 
     SDL_Window* window = nullptr;
-    SDL_GameController* controller = nullptr;
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     // iOS: native handles retained for periodic window/layer diagnostics.
     void* ios_ui_window = nullptr;
@@ -296,7 +296,61 @@ namespace {
     // polling SDL_GetKeyboardState alone can miss a keydown+keyup pair that
     // occurs between two game frames.
     std::array<std::atomic<uint8_t>, input_action_count> keyboard_tap_latches{};
-    int active_controller_device_index = -1;
+    class SDLControllerBackend final : public paperpad::input::ControllerBackend {
+    public:
+        void set_preferred_device_index(int device_index) {
+            preferred_device_index_ = device_index;
+        }
+
+        std::vector<paperpad::input::EnumeratedController> enumerate() override {
+            std::vector<paperpad::input::EnumeratedController> result;
+            const int count = SDL_NumJoysticks();
+            result.reserve(static_cast<std::size_t>(std::max(count, 0)));
+            for (int device_index = 0; device_index < count; ++device_index) {
+                if (!SDL_IsGameController(device_index)) {
+                    continue;
+                }
+                const SDL_JoystickID instance_id = SDL_JoystickGetDeviceInstanceID(device_index);
+                if (instance_id >= 0) {
+                    result.push_back({device_index, instance_id});
+                }
+            }
+            std::stable_sort(result.begin(), result.end(), [this](const auto& left, const auto& right) {
+                return left.device_index == preferred_device_index_
+                    && right.device_index != preferred_device_index_;
+            });
+            return result;
+        }
+
+        paperpad::input::ControllerHandle open(int device_index) override {
+            return SDL_GameControllerOpen(device_index);
+        }
+
+        void close(paperpad::input::ControllerHandle handle) override {
+            SDL_GameControllerClose(static_cast<SDL_GameController*>(handle));
+        }
+
+        bool connected(paperpad::input::ControllerHandle handle) const override {
+            return SDL_GameControllerGetAttached(static_cast<SDL_GameController*>(handle)) == SDL_TRUE;
+        }
+
+        paperpad::input::ControllerInstanceId instance_id(
+            paperpad::input::ControllerHandle handle) const override {
+            SDL_Joystick* joystick = SDL_GameControllerGetJoystick(
+                static_cast<SDL_GameController*>(handle));
+            return joystick == nullptr ? -1 : SDL_JoystickInstanceID(joystick);
+        }
+
+    private:
+        int preferred_device_index_ = 0;
+    };
+
+    std::mutex controller_mutex;
+    SDLControllerBackend controller_backend;
+    paperpad::input::ControllerSlots controller_slots;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    std::optional<bool> reported_physical_controller_state;
+#endif
 
     std::filesystem::path app_base_path() {
         return std::filesystem::current_path();
@@ -556,52 +610,72 @@ namespace {
         start_play_session_watchdog();
     }
 
-    bool open_controller_index(int device_index) {
-        if (device_index < 0 || device_index >= SDL_NumJoysticks() || !SDL_IsGameController(device_index)) {
-            return false;
+    void report_controller_changes(
+        const char* reason,
+        const std::vector<paperpad::input::ControllerSlotChange>& changes) {
+        for (const auto& change : changes) {
+            const int player = change.player_slot + 1;
+            switch (change.kind) {
+                case paperpad::input::ControllerSlotChangeKind::Assigned: {
+                    const auto handle = controller_slots.player_handle(change.player_slot);
+                    const char* name = handle == nullptr
+                        ? "unknown"
+                        : SDL_GameControllerName(static_cast<SDL_GameController*>(handle));
+                    std::fprintf(stderr,
+                        "[input t=%.3fs] controller assigned: reason=%s instance_id=%d player=%d "
+                        "device_index=%d name=%s\n",
+                        play_session_ms() / 1000.0,
+                        reason,
+                        change.instance_id,
+                        player,
+                        change.device_index,
+                        name ?: "unknown");
+                    break;
+                }
+                case paperpad::input::ControllerSlotChangeKind::Released:
+                    std::fprintf(stderr,
+                        "[input t=%.3fs] controller released: reason=%s instance_id=%d player=%d\n",
+                        play_session_ms() / 1000.0,
+                        reason,
+                        change.instance_id,
+                        player);
+                    break;
+                case paperpad::input::ControllerSlotChangeKind::OpenFailed:
+                    std::fprintf(stderr,
+                        "[input t=%.3fs] controller open failed: reason=%s instance_id=%d player=%d "
+                        "device_index=%d error=%s\n",
+                        play_session_ms() / 1000.0,
+                        reason,
+                        change.instance_id,
+                        player,
+                        change.device_index,
+                        SDL_GetError());
+                    break;
+            }
         }
-
-        SDL_GameController* opened_controller = SDL_GameControllerOpen(device_index);
-        if (opened_controller == nullptr) {
-            return false;
-        }
-
-        if (controller != nullptr) {
-            SDL_GameControllerClose(controller);
-        }
-        controller = opened_controller;
-        active_controller_device_index = device_index;
-#if defined(__APPLE__) && TARGET_OS_IPHONE
-        PaperPad_SetPhysicalControllerConnected(1);
-#endif
-        std::fprintf(stderr, "[input] controller connected: %s\n",
-            SDL_GameControllerName(controller) ?: "unknown");
-        return true;
     }
 
-    void open_first_controller() {
-        if (controller != nullptr) {
-            return;
-        }
-
-        const int count = SDL_NumJoysticks();
+    void reconcile_controllers(const char* reason) {
         int preferred_controller_index = 0;
         {
             std::lock_guard<std::mutex> lock(settings_mutex);
             preferred_controller_index = input_settings.preferred_controller_index;
         }
-
-        if (open_controller_index(preferred_controller_index)) {
-            return;
-        }
-
-        for (int i = 0; i < count; i++) {
-            if (i != preferred_controller_index && open_controller_index(i)) {
-                return;
-            }
+        std::size_t connected_count = 0;
+        {
+            std::lock_guard<std::mutex> lock(controller_mutex);
+            controller_backend.set_preferred_device_index(preferred_controller_index);
+            const auto changes = controller_slots.reconcile(controller_backend);
+            report_controller_changes(reason, changes);
+            connected_count = controller_slots.connected_count();
         }
 #if defined(__APPLE__) && TARGET_OS_IPHONE
-        PaperPad_SetPhysicalControllerConnected(0);
+        const bool physically_connected = connected_count != 0;
+        if (!reported_physical_controller_state.has_value()
+            || *reported_physical_controller_state != physically_connected) {
+            reported_physical_controller_state = physically_connected;
+            PaperPad_SetPhysicalControllerConnected(physically_connected);
+        }
 #endif
     }
 
@@ -613,7 +687,7 @@ namespace {
             std::exit(EXIT_FAILURE);
         }
 
-        open_first_controller();
+        reconcile_controllers("startup");
         return nullptr;
     }
 
@@ -684,18 +758,40 @@ namespace {
                 ultramodern::quit();
             }
             else if (event.type == SDL_CONTROLLERDEVICEADDED) {
-                open_first_controller();
+                const SDL_JoystickID instance_id =
+                    SDL_JoystickGetDeviceInstanceID(event.cdevice.which);
+                std::fprintf(stderr,
+                    "[input t=%.3fs] controller added event: device_index=%d instance_id=%d\n",
+                    play_session_ms() / 1000.0,
+                    event.cdevice.which,
+                    instance_id);
+                reconcile_controllers("device-added");
             }
             else if (event.type == SDL_CONTROLLERDEVICEREMOVED) {
-                if (controller != nullptr && event.cdevice.which == SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(controller))) {
-                    std::fprintf(stderr, "[input t=%.3fs] controller disconnected: %s\n",
-                        play_session_ms() / 1000.0,
-                        SDL_GameControllerName(controller) ?: "unknown");
-                    SDL_GameControllerClose(controller);
-                    controller = nullptr;
-                    active_controller_device_index = -1;
-                    open_first_controller();
+                std::fprintf(stderr,
+                    "[input t=%.3fs] controller removed event: instance_id=%d\n",
+                    play_session_ms() / 1000.0,
+                    event.cdevice.which);
+                {
+                    std::lock_guard<std::mutex> lock(controller_mutex);
+                    const auto changes = controller_slots.release_instance(
+                        controller_backend, event.cdevice.which);
+                    report_controller_changes("device-removed", changes);
                 }
+                reconcile_controllers("device-removed");
+            }
+            else if (event.type == SDL_CONTROLLERDEVICEREMAPPED) {
+                std::fprintf(stderr,
+                    "[input t=%.3fs] controller remapped event: instance_id=%d\n",
+                    play_session_ms() / 1000.0,
+                    event.cdevice.which);
+                reconcile_controllers("device-remapped");
+            }
+            else if (event.type == SDL_APP_DIDENTERFOREGROUND) {
+                std::fprintf(stderr,
+                    "[input t=%.3fs] foreground resume: reconciling controllers\n",
+                    play_session_ms() / 1000.0);
+                reconcile_controllers("foreground-resume");
             }
             else if (event.type == SDL_KEYDOWN && event.key.repeat == 0) {
                 std::lock_guard<std::mutex> lock(settings_mutex);
@@ -708,6 +804,13 @@ namespace {
                     }
                 }
             }
+        }
+
+        static auto next_controller_check = std::chrono::steady_clock::now();
+        const auto now = std::chrono::steady_clock::now();
+        if (now >= next_controller_check) {
+            reconcile_controllers("active-check");
+            next_controller_check = now + std::chrono::seconds(1);
         }
     }
 
@@ -932,8 +1035,11 @@ namespace {
         return std::clamp(static_cast<float>(value) / 32767.0f, -1.0f, 1.0f);
     }
 
-    float gamepad_binding_strength(const GamepadBinding& binding) {
-        if (controller == nullptr) {
+    float gamepad_binding_strength(
+        SDL_GameController* active_controller,
+        const GamepadBinding& binding) {
+        if (active_controller == nullptr
+            || SDL_GameControllerGetAttached(active_controller) != SDL_TRUE) {
             return 0.0f;
         }
 
@@ -941,14 +1047,14 @@ namespace {
             if (binding.code < 0 || binding.code >= SDL_CONTROLLER_BUTTON_MAX) {
                 return 0.0f;
             }
-            return SDL_GameControllerGetButton(controller, static_cast<SDL_GameControllerButton>(binding.code)) ? 1.0f : 0.0f;
+            return SDL_GameControllerGetButton(active_controller, static_cast<SDL_GameControllerButton>(binding.code)) ? 1.0f : 0.0f;
         }
 
         if (binding.code < 0 || binding.code >= SDL_CONTROLLER_AXIS_MAX) {
             return 0.0f;
         }
 
-        const float axis_value = normalize_axis(SDL_GameControllerGetAxis(controller, static_cast<SDL_GameControllerAxis>(binding.code)));
+        const float axis_value = normalize_axis(SDL_GameControllerGetAxis(active_controller, static_cast<SDL_GameControllerAxis>(binding.code)));
         if (binding.kind == GamepadBindingKind::AxisPositive) {
             return std::max(axis_value, 0.0f);
         }
@@ -999,8 +1105,22 @@ namespace {
             if (tapped || (scancode > SDL_SCANCODE_UNKNOWN && scancode < SDL_NUM_SCANCODES && keys[scancode])) {
                 apply_input_action(i, 1.0f, out_buttons, out_x, out_y);
             }
+        }
 
-            apply_input_action(i, gamepad_binding_strength(input_snapshot.gamepad_bindings[i]), out_buttons, out_x, out_y);
+        bool controller_active = false;
+        {
+            std::lock_guard<std::mutex> lock(controller_mutex);
+            auto* player_one = static_cast<SDL_GameController*>(controller_slots.player_handle(0));
+            controller_active = player_one != nullptr
+                && SDL_GameControllerGetAttached(player_one) == SDL_TRUE;
+            for (int i = 0; i < input_action_count; ++i) {
+                apply_input_action(
+                    i,
+                    gamepad_binding_strength(player_one, input_snapshot.gamepad_bindings[i]),
+                    out_buttons,
+                    out_x,
+                    out_y);
+            }
         }
 
         // Touch overlay state from the Apple shell (iOS).
@@ -1055,7 +1175,7 @@ namespace {
                 out_buttons,
                 direction,
                 touch_active ? 1 : 0,
-                controller != nullptr ? 1 : 0);
+                controller_active ? 1 : 0);
             if (direction_changed) {
                 last_direction_log_ms = now_ms;
             }
@@ -1342,9 +1462,9 @@ int PAPERPAD_MAIN(int argc, char** argv) {
 
     play_session_active.store(false, std::memory_order_relaxed);
 
-    if (controller != nullptr) {
-        SDL_GameControllerClose(controller);
-        controller = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(controller_mutex);
+        controller_slots.close_all(controller_backend);
     }
 #if defined(__APPLE__) && TARGET_OS_IPHONE
     PaperPad_SetPhysicalControllerConnected(0);

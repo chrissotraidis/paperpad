@@ -1,10 +1,27 @@
 # PaperPad handoff
 
-Current as of 2026-08-14. The maintained source-build paths are `scripts/build-macos-app.sh` and `scripts/build-ios-simulator.sh`; older `build-macos2`, `build-ios-deps`, and manual `ref/mstan-*` instructions are obsolete.
+Current as of 2026-08-16. The maintained source-build paths are `scripts/build-macos-app.sh` and `scripts/build-ios-simulator.sh`; older `build-macos2`, `build-ios-deps`, and manual `ref/mstan-*` instructions are obsolete.
 
 The complete hands-on issue queue and acceptance criteria are tracked in
 [TECH-DEBT.md](TECH-DEBT.md). This handoff records what the 2026-08-11 working
 tree changed, what was reproduced, and which release gates remain open.
+
+## 2026-08-16 Preview 2 controller repair
+
+- PaperPad's direct SDL2 controller path now reconciles current devices,
+  attached handles, instance IDs, and four stable player slots at startup, on
+  controller events, after foreground resume, and during a bounded active check.
+- The deterministic regression covers a missed removal with held input,
+  single-controller return to player 1, two-controller preservation, and
+  foreground reconciliation. Instance-ID/player-slot diagnostics are included.
+- Complete macOS, Simulator, and signed device builds passed. The build-2 app
+  installed in place and booted through active gameplay on the attached iPad;
+  exact read-back comparisons preserved both ROM files, ROM selection, the save
+  and backup, and controller/touch preferences.
+- The ROM-free unsigned Preview 2 IPA passed the package audit twice with
+  byte-identical SHA-256
+  `ea908c33fce6ba883acadff3ccc3025a1a7ef0284947c09cf98f3602af84d029`.
+  Physical Bluetooth, wired, and natural-sleep reconnect acceptance remains open.
 
 ## 2026-08-14 Preview 1 package
 

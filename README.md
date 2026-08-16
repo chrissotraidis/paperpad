@@ -11,7 +11,7 @@
   <img alt="iOS and iPadOS 15 or newer" src="https://img.shields.io/badge/iOS%20%2F%20iPadOS-15%2B-0A84FF?logo=apple">
   <img alt="Apple Silicon macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-0A84FF?logo=apple">
   <img alt="Metal renderer" src="https://img.shields.io/badge/renderer-Metal-5E5CE6">
-  <img alt="Public preview 1" src="https://img.shields.io/badge/release-v0.1.0--preview.1-FF9F0A">
+  <img alt="Public preview 2" src="https://img.shields.io/badge/release-v0.1.0--preview.2-FF9F0A">
   <img alt="ROM not included" src="https://img.shields.io/badge/game%20data-not%20included-FF453A">
 </p>
 
@@ -23,31 +23,31 @@ This repository contains integration source, patches, scripts, and documentation
 
 ## Project status
 
-PaperPad `v0.1.0-preview.1` is the first public iPhone and iPad preview. The release provides a ROM-free, unsigned IPA that users sign with their own Apple credentials. There is no TestFlight, App Store release, signed download, or notarized macOS build.
+PaperPad `v0.1.0-preview.2` is the current public iPhone and iPad preview. The release provides a ROM-free, unsigned IPA that users sign with their own Apple credentials. There is no TestFlight, App Store release, signed download, or notarized macOS build.
 
 | Target | Current status |
 |---|---|
 | Apple Silicon macOS | Source build, launch, file creation, early gameplay, keyboard input, and clean quit verified |
 | iPhone Simulator | Current development build and compact touch layout verified |
 | iPad Simulator | Current development build, touch/settings flows, diagnostics, and later-game fixture verified |
-| Physical iPad | Installed and actively tested; battle cursor, first-Goomba battle, longer controller play, and one clean replay of the intermittent early progression route verified |
+| Physical iPad | Preview 2 installed in place and booted through active gameplay without changing the private ROM, saves, or controller preferences; earlier battle, progression, and longer controller routes remain valid |
 | Physical iPhone | Current clean build installed and launched; private test ROM/save migrated, with hands-on touch and gameplay acceptance open |
-| Public binary distribution | [ROM-free unsigned Preview 1](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1); self-signing required |
+| Public binary distribution | [ROM-free unsigned Preview 2](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.2); self-signing required |
 
-Preview 1 is published and ready for self-signing. Current device testing covers early battles, a 16-minute Kishi V2 session, one clean instrumented replay of the intermittently delayed Goompa return route, and physical-iPad confirmation that the audio crackle is gone. Two more targeted progression replays, complete controller mapping/reconnect, physical-iPhone hands-on acceptance, and chapter-spanning testing remain follow-up validation for future releases.
+Preview 2 adds targeted SDL2 controller-slot reconciliation for missed disconnects, reconnects, and foreground resume. Deterministic tests cover single-controller return, two-controller slot preservation, held-input release, and a missed removal event. The exact signed release candidate also booted on the attached iPad after an in-place update that preserved its private ROM, saves, and controller preferences. Physical Bluetooth, wired, and natural-sleep reconnect acceptance remains open, as do complete mapping, physical-iPhone hands-on acceptance, and chapter-spanning testing.
 
 See [Current status](docs/STATUS.md), [Technical debt](docs/TECH-DEBT.md), and the [Release checklist](docs/RELEASE_CHECKLIST.md) for dated evidence and the remaining gates.
 
-## Download Preview 1
+## Download Preview 2
 
-Download `PaperPad-v0.1.0-preview.1-unsigned.ipa` and its checksum from the [Preview 1 release](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1).
+Download `PaperPad-v0.1.0-preview.2-unsigned.ipa` and its checksum from the [Preview 2 release](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.2).
 
 - iPhone or iPad with iOS/iPadOS 15 or newer
 - arm64, ROM-free, and unsigned; sign it with your own Apple credentials
-- SHA-256: `80721e9a726e3131b86f7186ee150fdbec8a6e53ce327a11baa2a5d85fc7e8ee`
+- SHA-256: `ea908c33fce6ba883acadff3ccc3025a1a7ef0284947c09cf98f3602af84d029`
 - Paper Mario (US) 1.0 must be supplied and imported by the user
 
-Follow the [unsigned IPA installation guide](docs/INSTALL_IPA.md). Preview 1 is not an App Store or TestFlight build; uninstalling can remove the private ROM, saves, and settings stored by your signed copy.
+Follow the [unsigned IPA installation guide](docs/INSTALL_IPA.md). Preview 2 is not an App Store or TestFlight build; uninstalling can remove the private ROM, saves, and settings stored by your signed copy.
 
 ## Get started
 
@@ -136,7 +136,7 @@ PaperPad provides every standard N64 input on screen: analog stick, D-pad, A, B,
 - **Diagnostics:** create a reviewable text report through the system share sheet.
 - **ROM management:** replace or remove the privately stored game ROM.
 
-Opening the menu, Settings, share sheet, or ROM picker clears held input and hides gameplay touch targets. Dismissing the sheet restores them only when Touch Controls is enabled. When a hardware controller is connected, the iOS build hides the gameplay overlay while keeping the menu available, then restores touch controls on disconnect; basic physical-controller play is verified, while reconnect and complete mapping acceptance remain open.
+Opening the menu, Settings, share sheet, or ROM picker clears held input and hides gameplay touch targets. Dismissing the sheet restores them only when Touch Controls is enabled. When a hardware controller is connected, the iOS build hides the gameplay overlay while keeping the menu available, then restores touch controls on disconnect. SDL2 handles are reconciled on controller events, foreground resume, and a bounded active check so stale handles release their player slot and held input; hands-on reconnect and complete mapping acceptance remain open.
 
 ### Keyboard and controller bindings
 
@@ -147,7 +147,7 @@ Opening the menu, Settings, share sheet, or ROM picker clears held input and hid
 | L / R | `Q` / `E` | Analog stick | Arrow keys |
 | D-pad | `W` `A` `S` `D` | C-buttons | `I` `J` `K` `L` |
 
-SDL-compatible controllers use the left stick, D-pad, face buttons, shoulders, left trigger for Z, and right stick for the C-buttons. A physical Kishi V2 session verified analog plus A/B/Z/L/R/Start during sustained play. D-pad, all C directions, hot-plug, and reconnect still require targeted acceptance.
+SDL-compatible controllers use the left stick, D-pad, face buttons, shoulders, left trigger for Z, and right stick for the C-buttons. A physical Kishi V2 session verified analog plus A/B/Z/L/R/Start during sustained play. Automated tests cover disconnect input release, single-controller reconnect, two-controller slot preservation, and foreground reconciliation after a missed removal; D-pad, all C directions, Bluetooth/wired reconnect, and natural-sleep behavior still require physical acceptance.
 
 ## Screenshots
 
@@ -239,7 +239,7 @@ No. You must provide your own legally obtained, unmodified Paper Mario (US) 1.0 
 <details>
 <summary><strong>Is there an IPA or App Store build?</strong></summary>
 
-Yes: [Preview 1](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.1) provides a ROM-free unsigned IPA for self-signing. There is no App Store, TestFlight, or pre-signed download. PaperPad never includes game data; users import their own supported ROM.
+Yes: [Preview 2](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.2) provides a ROM-free unsigned IPA for self-signing. There is no App Store, TestFlight, or pre-signed download. PaperPad never includes game data; users import their own supported ROM.
 </details>
 
 <details>
@@ -257,7 +257,7 @@ Higher internal resolution improves polygon edges and sampling. It cannot add de
 <details>
 <summary><strong>Does it support physical controllers?</strong></summary>
 
-Controller mappings and touch-overlay handoff are implemented through SDL. A physical Kishi V2 has completed a longer iPad gameplay session using analog plus A/B/Z/L/R/Start. D-pad, all C directions, reconnect, and iPhone controller behavior remain release checks.
+Controller mappings and touch-overlay handoff are implemented through SDL2. A physical Kishi V2 has completed a longer iPad gameplay session using analog plus A/B/Z/L/R/Start. Deterministic reconnect coverage now protects player slots and held-input release, while D-pad, all C directions, physical reconnect/sleep, and iPhone controller behavior remain release checks.
 </details>
 
 <details>
@@ -283,6 +283,7 @@ No. Development testing covers the opening flow, early battles and progression, 
 
 - [Building and device installation](docs/BUILDING.md)
 - [Install the unsigned IPA](docs/INSTALL_IPA.md)
+- [Preview 2 release notes](docs/RELEASE_NOTES-v0.1.0-preview.2.md)
 - [Preview 1 release notes](docs/RELEASE_NOTES-v0.1.0-preview.1.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Current status](docs/STATUS.md)
@@ -299,7 +300,7 @@ No. Development testing covers the opening flow, early battles and progression, 
 
 PaperPad builds on work from [pmret/papermario](https://github.com/pmret/papermario), [Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut), N64Recomp/N64ModernRuntime, RT64, mupen64plus-rsp-hle, SDL, zstd, and their contributors.
 
-Its phone/tablet layout, persistent menu, modal input lifecycle, and customization model are adapted from [HarkinianPad](https://github.com/chrissotraidis/harkinianpad). PaperPad retains its own N64 input bridge and does not claim feature parity: controller acceptance, HarkinianPad's hold-to-latch Z gesture, and per-control gameplay VoiceOver elements remain open or intentionally separate.
+Its phone/tablet layout, persistent menu, modal input lifecycle, and customization model are adapted from [HarkinianPad](https://github.com/chrissotraidis/harkinianpad). PaperPad retains its own SDL2/N64 input bridge and does not copy another project's controller patch: physical controller acceptance, HarkinianPad's hold-to-latch Z gesture, and per-control gameplay VoiceOver elements remain open or intentionally separate.
 
 ## Legal
 
