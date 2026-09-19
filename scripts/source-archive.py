@@ -65,6 +65,9 @@ def create(output):
                     if not (member.isfile() or member.isdir() or member.issym()):
                         raise SystemExit(f'Unexpected source entry: {member.name}')
                     archive.extract(member, destination)
+                    if member.isfile():
+                        # Git stores executable intent, not group-write umask.
+                        target.chmod(0o755 if member.mode & 0o111 else 0o644)
         files = {str(p.relative_to(stage)): entry(p) for p in sorted(stage.rglob('*'))
                  if p.is_file() or p.is_symlink()}
         doc = {'schemaVersion': 1, 'applicationCommit': git(ROOT, 'rev-parse', 'HEAD'),
