@@ -2,6 +2,7 @@
 #include "paperpad_input.h"
 #include "controller_slots.h"
 #include "input_mapping.h"
+#include "resolution.h"
 #include <array>
 #include <SDL.h>
 #include <SDL_syswm.h>
@@ -41,6 +42,9 @@ public:
  int32_t instance_id(void* p) const override {return SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(static_cast<SDL_GameController*>(p)));}
 } backend;
 paperpad::input::ControllerSlots slots;
+SDL_Window* gameWindow=nullptr;
+UIWindow* nativeGameWindow=nil;
+std::atomic<bool> nativeModal{false};
 std::array<std::atomic<uint8_t>,18> keyTaps{};
 int eventWatch(void*,SDL_Event* e) {
  if(e->type==SDL_KEYDOWN && !e->key.repeat && active.load() && !modal.load())
@@ -71,9 +75,11 @@ extern "C" void PaperPadBoat_Ready() {
  CVarSetInteger("gSettings.OpenMenuBar",0);
  CVarSetInteger("gOpenWindows.ControllerDisconnected",0);
  if(SDL_Window* window=SDL_GetKeyboardFocus()?SDL_GetKeyboardFocus():SDL_GetWindowFromID(1)) {
+  gameWindow=window;
   SDL_SysWMinfo info{};SDL_VERSION(&info.version);
   if(SDL_GetWindowWMInfo(window,&info)) {
    UIWindow* nativeWindow=info.info.uikit.window;
+   nativeGameWindow=nativeWindow;
    paperpad_touch_attach((__bridge void*)nativeWindow);
    CGSize bounds=nativeWindow.bounds.size,screen=nativeWindow.screen.bounds.size;
    std::fprintf(stderr,"[paperpad-boat] native window idiom=%ld bounds=%.0fx%.0f screen=%.0fx%.0f scale=%.1f\n",
@@ -84,15 +90,23 @@ extern "C" void PaperPadBoat_Ready() {
 }
 extern "C" void PaperPadBoat_Frame() {
  const uint64_t now=SDL_GetTicks64();lastFrame.store(now);
+ if(NSThread.isMainThread)nativeModal.store(nativeGameWindow.rootViewController.presentedViewController!=nil);
+ int pixelWidth=0,pixelHeight=0;
+ if(gameWindow)SDL_Metal_GetDrawableSize(gameWindow,&pixelWidth,&pixelHeight);
+ const int chosenScale=resolution.load()==0 ? paperpad::boat::automatic_scale(pixelWidth,pixelHeight,aspect.load()!=0) : resolution.load();
+ static int previousScale=0;
+ if(chosenScale!=previousScale){previousScale=chosenScale;settingsChanged.store(true);}
  if(settingsChanged.exchange(false)) {
   CVarSetInteger("gSettings.Volume.Master",std::lround(volume.load()*100));
   CVarSetInteger("gSettings.AdvancedResolution.Enabled",1);
   CVarSetFloat("gSettings.AdvancedResolution.AspectRatioX",aspect.load()==0?4.f:0.f);
   CVarSetFloat("gSettings.AdvancedResolution.AspectRatioY",aspect.load()==0?3.f:0.f);
-  CVarSetInteger("gSettings.AdvancedResolution.VerticalResolutionToggle",resolution.load()!=0);
-  CVarSetInteger("gSettings.AdvancedResolution.VerticalPixelCount",240*std::max(resolution.load(),1));
+  CVarSetInteger("gSettings.AdvancedResolution.VerticalResolutionToggle",1);
+  CVarSetInteger("gSettings.LowResMode",0);
+  CVarSetInteger("gSettings.AdvancedResolution.PixelPerfectMode",0);
+  CVarSetInteger("gSettings.AdvancedResolution.VerticalPixelCount",240*chosenScale);
   CVarSetFloat("gSettings.InternalResolution",1.f);
-  std::fprintf(stderr,"[paperpad-boat] settings volume=%.2f resolution=%d aspect=%d\n",volume.load(),resolution.load(),aspect.load());
+  std::fprintf(stderr,"[paperpad-boat] settings volume=%.2f resolution=%d aspect=%d effective_scale=%d drawable=%dx%d\n",volume.load(),resolution.load(),aspect.load(),chosenScale,pixelWidth,pixelHeight);
  }
  auto window=std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
  if(auto interpreter=window->GetInterpreterWeak().lock()) {
@@ -108,7 +122,7 @@ extern "C" void PaperPadBoat_ReadController(void* raw) {
   std::fprintf(stderr,"[paperpad-boat] controller change=%d player=%d instance=%d\n",int(change.kind),change.player_slot,change.instance_id);
  static int lastConnected=-1;int connected=slots.connected_count()>0;
  if(connected!=lastConnected){PaperPad_SetPhysicalControllerConnected(connected);lastConnected=connected;}
- if(!active.load() || modal.load()){for(auto& tap:keyTaps)tap.store(0);return;}
+ if(!active.load() || modal.load() || nativeModal.load()){for(auto& tap:keyTaps)tap.store(0);return;}
  float x=0,y=0;uint16_t buttons=0;paperpad_touch_snapshot(&buttons,&x,&y);
  if(auto* c=static_cast<SDL_GameController*>(slots.player_handle(0))) {
   for(auto m:paperpad::boat::buttons)if(SDL_GameControllerGetButton(c,m.button))buttons|=m.mask;

@@ -13,3 +13,6 @@ void paperpad_finish_diagnostics_log(void* application_support_root);
 // save data.
 void paperpad_present_diagnostics_share(void* presenter_pointer,
                                         void (^completion)(void));
+
+// SunPad-style issue prompt. Opens a reviewable GitHub draft; never posts it.
+void paperpad_present_problem_report(void* presenter_pointer, void (^completion)(void));

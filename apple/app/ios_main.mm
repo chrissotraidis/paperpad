@@ -144,6 +144,22 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 - (void)setModalControlsHidden:(BOOL)hidden;
 @end
 
+// Native menu lifecycle keeps physical and touch input neutral until dismissal.
+@interface PaperPadMenuButton : UIButton
+@property(nonatomic, copy) void (^visibilityChanged)(BOOL);
+@end
+@implementation PaperPadMenuButton
+- (void)contextMenuInteraction:(UIContextMenuInteraction*)interaction willDisplayMenuForConfiguration:(UIContextMenuConfiguration*)configuration animator:(id<UIContextMenuInteractionAnimating>)animator {
+    [super contextMenuInteraction:interaction willDisplayMenuForConfiguration:configuration animator:animator];
+    if (self.visibilityChanged) self.visibilityChanged(YES);
+}
+- (void)contextMenuInteraction:(UIContextMenuInteraction*)interaction willEndForConfiguration:(UIContextMenuConfiguration*)configuration animator:(id<UIContextMenuInteractionAnimating>)animator {
+    [super contextMenuInteraction:interaction willEndForConfiguration:configuration animator:animator];
+    if (animator) [animator addCompletion:^{ if (self.visibilityChanged) self.visibilityChanged(NO); }];
+    else if (self.visibilityChanged) self.visibilityChanged(NO);
+}
+@end
+
 @implementation PaperPadTouchOverlayView {
     std::array<TouchControl, kControlCount> _controls;
     std::array<TouchControl, kControlCount> _undoControls;
@@ -176,7 +192,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         _selected = 9;
         _gameplayControlsEnabled = YES;
         _globalOpacity = 0.70;
-        _utilityButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        _utilityButton = [[PaperPadMenuButton alloc] initWithFrame:CGRectZero];
         [_utilityButton setTitle:@"\u2022\u2022\u2022" forState:UIControlStateNormal];
         _utilityButton.titleLabel.font = [UIFont boldSystemFontOfSize:16.0];
         _utilityButton.backgroundColor = [UIColor colorWithWhite:0.02 alpha:0.64];
@@ -185,8 +201,21 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         _utilityButton.layer.borderColor = [UIColor colorWithWhite:1.0 alpha:0.34].CGColor;
         _utilityButton.accessibilityLabel = @"PaperPad Menu";
         _utilityButton.accessibilityHint = @"Opens settings and game setup";
+#ifdef PAPERPAD_APP
+        __unsafe_unretained PaperPadTouchOverlayView* owner = self;
+        ((PaperPadMenuButton*)_utilityButton).visibilityChanged = ^(BOOL visible) {
+            [owner clearInput];
+            [owner setMenuVisible:visible];
+        };
+        _utilityButton.showsMenuAsPrimaryAction = YES;
+        _utilityButton.menu = [self modernUtilityMenu];
+        [_utilityButton setTitle:nil forState:UIControlStateNormal];
+        [_utilityButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
+        _utilityButton.tintColor = UIColor.whiteColor;
+#else
         [_utilityButton addTarget:self action:@selector(presentUtilityMenu)
                  forControlEvents:UIControlEventTouchUpInside];
+#endif
         [self addSubview:_utilityButton];
         [self loadLayout];
         [[NSNotificationCenter defaultCenter]
@@ -398,7 +427,17 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         if (!control.visible && !_editing) continue;
         CGPoint center = [self centerForControl:control];
         CGFloat radius = [self radiusForControl:control];
-        CGRect controlFrame = [self frameForControl:control];
+#ifdef PAPERPAD_APP
+        if (control.kind == ControlKind::Stick && !_editing) {
+            BOOL active = NO;
+            for (const auto& role : _touchRoles) if (role.second == index) active = YES;
+            if (!active) continue;
+            center = _stickOrigin;
+        }
+#endif
+        CGRect controlFrame = control.kind == ControlKind::Stick && !_editing
+            ? CGRectMake(center.x-radius, center.y-radius, radius*2, radius*2)
+            : [self frameForControl:control];
         UIBezierPath* controlPath = [self isShoulderControl:control]
             ? [UIBezierPath bezierPathWithRoundedRect:controlFrame cornerRadius:radius]
             : [UIBezierPath bezierPathWithOvalInRect:controlFrame];
@@ -485,6 +524,9 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
         const TouchControl& control = _controls[index];
         if (!control.visible && !includeHidden) continue;
+#ifdef PAPERPAD_APP
+        if (!_editing && control.kind == ControlKind::Stick) continue;
+#endif
         CGPoint center = [self centerForControl:control];
         CGFloat distance = hypot(point.x - center.x, point.y - center.y);
         CGFloat radius = [self radiusForControl:control];
@@ -499,7 +541,78 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     return nearest;
 }
 
+#ifdef PAPERPAD_APP
+- (void)setMenuVisible:(BOOL)visible {
+    _modalControlsHidden = visible;
+    PaperPadBoat_SetInputSuspended(visible ? 1 : 0);
+    [self clearInput];
+    // Keep the native menu's anchor button in the hierarchy while it is open.
+    _utilityButton.hidden = _editing;
+}
+- (UIAction*)menuAction:(NSString*)title icon:(NSString*)icon perform:(void (^)(UIViewController*))perform {
+    __unsafe_unretained PaperPadTouchOverlayView* owner = self;
+    return [UIAction actionWithTitle:title image:[UIImage systemImageNamed:icon] identifier:nil handler:^(__unused UIAction* action) {
+        [owner clearInput];
+        // Let the native menu finish dismissing before presenting the next sheet.
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.4*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            UIViewController* presenter = owner.window.rootViewController;
+            while (presenter.presentedViewController) presenter = presenter.presentedViewController;
+            if (presenter) perform(presenter);
+        });
+    }];
+}
+- (UIMenu*)modernUtilityMenu {
+    __unsafe_unretained PaperPadTouchOverlayView* owner = self;
+    UIAction* settings = [self menuAction:@"Settings" icon:@"slider.horizontal.3" perform:^(UIViewController* presenter) {
+        [owner setModalControlsHidden:YES];
+        PaperPadSettingsViewController* settings = [PaperPadSettingsViewController new];
+        settings.modalPresentationStyle = UIModalPresentationFormSheet;
+        [presenter presentViewController:settings animated:YES completion:nil];
+    }];
+    UIAction* edit = [self menuAction:@"Edit Touch Layout" icon:@"hand.draw" perform:^(__unused UIViewController* presenter) { [owner beginEditingLayout]; }];
+    UIAction* reset = [self menuAction:@"Reset Touch Layout" icon:@"arrow.counterclockwise" perform:^(__unused UIViewController* presenter) { [owner resetLayout]; }];
+    UIAction* rom = [self menuAction:@"Manage Game ROM" icon:@"externaldrive" perform:^(UIViewController* presenter) {
+        paperpad_present_rom_manager((__bridge void*)presenter);
+    }];
+    UIAction* original = [self menuAction:@"Launch Original" icon:@"arrow.up.forward.app" perform:^(UIViewController* presenter) {
+        fprintf(stderr,"[paperpad-boat] Launch Original requested\n");
+        [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"paperpad-original://launch"] options:@{} completionHandler:^(BOOL opened) {
+            fprintf(stderr,"[paperpad-boat] Launch Original opened=%d\n",(int)opened);
+            if (!opened) dispatch_async(dispatch_get_main_queue(), ^{
+                UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Original Is Unavailable" message:@"Install the PaperPad Original companion to use your Original saves. Boat keeps separate saves." preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [presenter presentViewController:alert animated:YES completion:nil];
+            });
+        }];
+    }];
+    UIAction* saves = [self menuAction:@"About Original Saves" icon:@"tray.full" perform:^(UIViewController* presenter) {
+        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Your Original Saves" message:@"PaperPad Original keeps your existing progress. Boat uses a different save format and a separate app container. Launch Original to continue that save; removing a ROM does not remove saves." preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+        [presenter presentViewController:alert animated:YES completion:nil];
+    }];
+    UIAction* share = [self menuAction:@"Share Diagnostics & Logs…" icon:@"square.and.arrow.up" perform:^(UIViewController* presenter) {
+        [owner setModalControlsHidden:YES];
+        paperpad_present_diagnostics_share((__bridge void*)presenter, ^{ [owner setModalControlsHidden:NO]; });
+    }];
+    UIAction* report = [self menuAction:@"Report a Problem…" icon:@"exclamationmark.bubble" perform:^(UIViewController* presenter) {
+        [owner setModalControlsHidden:YES];
+        paperpad_present_problem_report((__bridge void*)presenter, ^{ [owner setModalControlsHidden:NO]; });
+    }];
+    return [UIMenu menuWithTitle:@"PaperPad Boat" children:@[
+        settings,
+        [UIMenu menuWithTitle:@"Controls" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:@[edit, reset]],
+        [UIMenu menuWithTitle:@"Game Data & Saves" image:[UIImage systemImageNamed:@"externaldrive"] identifier:nil options:0 children:@[rom,saves]],
+        [UIMenu menuWithTitle:@"Support" image:[UIImage systemImageNamed:@"questionmark.circle"] identifier:nil options:0 children:@[share,report]],
+        [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[original]]
+    ]];
+}
+#endif
+
 - (void)presentUtilityMenu {
+#ifdef PAPERPAD_APP
+    [_utilityButton performPrimaryAction];
+    return;
+#endif
     [self clearInput];
     [self setModalControlsHidden:YES];
     UIViewController* presenter = self.window.rootViewController;
@@ -515,35 +628,6 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         [UIAlertController alertControllerWithTitle:@"PaperPad"
                                             message:nil
                                      preferredStyle:UIAlertControllerStyleActionSheet];
-#ifdef PAPERPAD_APP
-    [menu addAction:[UIAlertAction actionWithTitle:@"Launch Original"
-                                             style:UIAlertActionStyleDefault
-                                           handler:^(__unused UIAlertAction* action) {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
-                       dispatch_get_main_queue(), ^{
-            // Keep separate engines and save formats in their existing app containers.
-            NSURL* url = [NSURL URLWithString:@"paperpad-original://launch"];
-            fprintf(stderr, "[paperpad-boat] Launch Original requested\n");
-            [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL opened) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    fprintf(stderr, "[paperpad-boat] Launch Original opened=%d\n", (int)opened);
-                    [self setModalControlsHidden:NO];
-                    if (opened) return;
-                    UIViewController* presenter = self.window.rootViewController;
-                    while (presenter.presentedViewController != nil) presenter = presenter.presentedViewController;
-                    if (presenter == nil) return;
-                    [self setModalControlsHidden:YES];
-                    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Original Is Unavailable"
-                        message:@"Install the companion PaperPad Original build to launch it here. Your Original saves stay in that app."
-                        preferredStyle:UIAlertControllerStyleAlert];
-                    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault
-                        handler:^(__unused UIAlertAction* action) { [self setModalControlsHidden:NO]; }]];
-                    [presenter presentViewController:alert animated:YES completion:nil];
-                });
-            }];
-        });
-    }]];
-#endif
     [menu addAction:[UIAlertAction actionWithTitle:@"Settings"
                                              style:UIAlertActionStyleDefault
                                            handler:^(__unused UIAlertAction* action) {
@@ -848,6 +932,13 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             control = 0;
         }
         if (control == NSNotFound) continue;
+#ifdef PAPERPAD_APP
+        if (!_editing && _controls[control].kind == ControlKind::Stick) {
+            BOOL owned = NO;
+            for (const auto& role : _touchRoles) if (_controls[role.second].kind == ControlKind::Stick) owned = YES;
+            if (owned) continue; // A second finger must not move the first finger's origin.
+        }
+#endif
         _selected = control;
         _touchRoles[touch] = (int)control;
         if (_editing) {
@@ -858,7 +949,12 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
             // The broad left-side pickup region targets the same fixed visible
             // stick. Keeping one origin guarantees that both the rendered knob
             // and the N64 value use the identical clamped vector.
+#ifdef PAPERPAD_APP
+            // Same touch-down anchor behavior as KartPad's floating stick.
+            _stickOrigin = point;
+#else
             _stickOrigin = [self centerForControl:_controls[control]];
+#endif
             _stickKnob = _stickOrigin;
         } else {
             // Preserve quick taps across several runtime polls without turning
@@ -1061,7 +1157,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
     [_resolutionControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
     [stack addArrangedSubview:_resolutionControl];
-    _resolutionStatusLabel = [self label:@"Auto chooses the largest whole-number scale that fits this screen."];
+    _resolutionStatusLabel = [self label:@"Auto chooses a whole-number scale up to 4× for this screen."];
     _resolutionStatusLabel.font = [UIFont systemFontOfSize:14.0];
     _resolutionStatusLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1.0];
     _resolutionStatusLabel.numberOfLines = 3;
@@ -1105,6 +1201,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [_touchOpacitySlider.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
     [stack addArrangedSubview:_touchOpacitySlider];
 
+#ifndef PAPERPAD_APP
     // Actions.
     [stack addArrangedSubview:[self actionButton:@"Edit Touch Layout"
                                       systemImage:@"hand.draw"
@@ -1118,6 +1215,8 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [stack addArrangedSubview:[self actionButton:@"Manage Game ROM"
                                       systemImage:@"externaldrive"
                                              action:@selector(romPressed)]];
+
+#endif
 
     UIButton* done = [UIButton buttonWithType:UIButtonTypeSystem];
     UIButtonConfiguration* doneConfiguration = [UIButtonConfiguration filledButtonConfiguration];
@@ -1177,7 +1276,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     const BOOL automatic = _resolutionControl.selectedSegmentIndex == 0;
     if (available) {
         _resolutionStatusLabel.text = [NSString stringWithFormat:
-            automatic ? @"Auto is currently %.2fx (%ux%u internal). Auto may exceed 4x to fit the screen; original textures keep their source detail."
+            automatic ? @"Auto is currently %.2fx (%ux%u internal). Auto uses a whole-number scale up to 4x; original textures keep their source detail."
                       : @"Renderer confirms %.2fx (%ux%u internal).",
             scaleMilli / 1000.0, width, height];
     } else {
