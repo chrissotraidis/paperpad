@@ -1,11 +1,11 @@
 # PaperPad Original and PaperPad Boat
 
-The owner's 2026-09-19 decision is to keep **two builds**. Original remains the existing ReCut/RT64 product. PaperPad Boat is a separate native PaperBoat product with PaperPad's Apple controls and setup. Neither app replaces or migrates the other's container. Both can coexist. No shared-save or automatic save conversion is implemented.
+The owner's 2026-09-19 decision is to keep **two builds**. Original remains the existing ReCut/RT64 product. PaperPad Boat is a separate native PaperBoat product with PaperPad's Apple controls and setup. Boat is the default entry point. Its three-dot menu offers **Launch Original**, opening the separately installed companion through `paperpad-original://launch`. Neither app replaces or migrates the other's container. Both can coexist. No shared-save or automatic save conversion is implemented.
 
 | Product | Identity | Current delivery |
 |---|---|---|
 | PaperPad Original | `com.chrissotraidis.paperpad` | Existing public `v0.1.0-preview.2`, unchanged |
-| PaperPad Boat | `com.chrissotraidis.paperpad.boat` | Private development candidate, 0.2.0/build 1; iOS/iPadOS 16.3+ |
+| PaperPad Boat | `com.chrissotraidis.paperpad.boat` | Private iPad test, 0.2.0/build 2; iOS/iPadOS 16.3+ |
 
 The original app's source-maintenance PR #6 remains separate. This branch builds on that source/docs work but does not change Original's runtime pin or build entry points. The same UIKit files provide touch layouts, independent phone/tablet preferences, ROM validation, settings and bounded diagnostics. Boat-specific hooks compile only for its own target. The earlier audit's single-successor recommendation is superseded by the owner's two-build instruction.
 
@@ -55,3 +55,13 @@ Native UI interaction through the available computer-use tool was unavailable fo
 ## Recovery
 
 Original main and public Preview 2 are unchanged. The verified private backup from the original audit remains at the location recorded in the task recovery handoff; it includes the accepted artifact and complete prior working inputs. Boat uses its own bundle/container, so removing or abandoning its development branch does not require rolling back Original. Never install Boat over Original's identity or convert a user's only save copy. Keep development builds and locally extracted data private.
+
+## iPad test — build 2
+
+At app commit `fba0d03`, Boat 0.2.0/build 2 was built, signature-verified, installed and launched on the owner's physical iPad. Its private unsigned IPA SHA-256 is `3fe4920fc6b622a05622c09208c4ecdd0ecbbae47140777baffcab87bef6a602`. Device and Simulator builds, source/package checks, input/save tests and hosted CI passed. Physical logs show completed ROM extraction, initialized SDL audio, advancing frames and map transitions; no visual, listening or full-game acceptance is inferred from those logs.
+
+Original's private companion is Preview 2 with only the registered launch scheme, display name and build metadata changed (0.1.0/build 3). `scripts/stage-original-launcher.py` requires the exact accepted public IPA and proves its unsigned executable is unchanged before signing. It stages a fresh copy and never edits an existing artifact. Future source builds also register the scheme. Both installs used the existing signing team; Original retained its exact application entitlements.
+
+Before updating Original, all 11 Documents/Library files were backed up, archived, restored separately and hash-verified. All 11 remained byte-identical after the in-place update; save files were checked again after launching Original and still matched. Boat received a verified copy of the existing ROM in its own container, with no Original saves imported. A missing Original companion produces a native message and releases modal input suspension.
+
+The installed pair's URL registrations and versions were read back. Original launched with its URL payload; the Boat URL opened the Simulator build. Physically tapping the three-dot action, controller/touch behavior, audio quality and save/reload gameplay remain owner acceptance checks. The device screenshot service was unavailable; no on-device screenshot or visual acceptance is claimed. Existing extraction asset-clash diagnostics remain recorded. No public binary release was published.
