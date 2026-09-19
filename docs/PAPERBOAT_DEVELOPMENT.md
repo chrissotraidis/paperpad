@@ -50,7 +50,7 @@ The real native save codec passed distinct partner-time-array values, complete J
 
 A persisted-settings test on the dedicated Simulator verified 2x resolution at 640×480 in Original aspect and 1043×480 in Fill Screen, with corresponding frame logs and screenshots. This exercised the settings-to-renderer path by seeding preferences, not by pressing the settings UI. [Original issue #5](https://github.com/chrissotraidis/paperpad/issues/5) stays open because this separate product does not establish a fix in the released Original build.
 
-Native UI interaction through the available computer-use tool was unavailable for Simulator. Consequently actual touch presses, settings/share-sheet interaction, save/reload gameplay, physical controller handoff and audio/lifecycle acceptance remain explicit follow-up checks. No hardware installation or binary release occurred. File formats and saves remain isolated. Upstream/current-source licenses and game-derived-content rights still need distribution qualification; notices and a fork relationship do not resolve that boundary.
+Native UI interaction through the available computer-use tool was unavailable for Simulator. Consequently actual touch presses, settings/share-sheet interaction, save/reload gameplay, physical controller handoff and audio/lifecycle acceptance remain explicit follow-up checks. At this initial build 1 checkpoint, no hardware installation or binary release had occurred; the later build 2 device test is recorded below. File formats and saves remain isolated. Upstream/current-source licenses and game-derived-content rights still need distribution qualification; notices and a fork relationship do not resolve that boundary.
 
 ## Recovery
 
