@@ -30,6 +30,12 @@ extern "C" void PaperPadBoat_SetInputSuspended(int);
 - (void)refreshFromDefaults;
 @end
 
+#ifdef PAPERPAD_APP
+@interface PaperPadCompactSettingsController : UITableViewController <UIPopoverPresentationControllerDelegate>
+@property(nonatomic) BOOL touchSettingsOnly;
+@end
+#endif
+
 namespace {
 
 std::atomic<uint16_t> g_touch_buttons{0};
@@ -580,20 +586,26 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         });
     }];
 }
+- (void)presentCompactSettings:(BOOL)touchOnly from:(UIViewController*)presenter {
+    [self setModalControlsHidden:YES];
+    PaperPadCompactSettingsController* settings = [[[PaperPadCompactSettingsController alloc] init] autorelease];
+    settings.touchSettingsOnly = touchOnly;
+    UINavigationController* navigation = [[[UINavigationController alloc] initWithRootViewController:settings] autorelease];
+    navigation.modalPresentationStyle = UIModalPresentationPopover;
+    navigation.preferredContentSize = CGSizeMake(360, touchOnly ? 250 : 390);
+    navigation.popoverPresentationController.sourceView = self;
+    navigation.popoverPresentationController.sourceRect = _utilityButton.frame;
+    navigation.popoverPresentationController.delegate = settings;
+    navigation.popoverPresentationController.permittedArrowDirections = UIPopoverArrowDirectionAny;
+    [presenter presentViewController:navigation animated:YES completion:nil];
+}
 - (UIMenu*)modernUtilityMenu {
     __unsafe_unretained PaperPadTouchOverlayView* owner = self;
     UIAction* settings = [self menuAction:@"Display & Audio" icon:@"slider.horizontal.3" perform:^(UIViewController* presenter) {
-        [owner setModalControlsHidden:YES];
-        PaperPadSettingsViewController* settings = [PaperPadSettingsViewController new];
-        settings.modalPresentationStyle = UIModalPresentationFormSheet;
-        [presenter presentViewController:settings animated:YES completion:nil];
+        [owner presentCompactSettings:NO from:presenter];
     }];
     UIAction* touch = [self menuAction:@"Touch Settings" icon:@"hand.point.up" perform:^(UIViewController* presenter) {
-        [owner setModalControlsHidden:YES];
-        PaperPadSettingsViewController* settings = [PaperPadSettingsViewController new];
-        settings.touchSettingsOnly = YES;
-        settings.modalPresentationStyle = UIModalPresentationFormSheet;
-        [presenter presentViewController:settings animated:YES completion:nil];
+        [owner presentCompactSettings:YES from:presenter];
     }];
     UIAction* edit = [self menuAction:@"Edit Touch Layout" icon:@"hand.draw" perform:^(__unused UIViewController* presenter) { [owner beginEditingLayout]; }];
     UIAction* reset = [self menuAction:@"Reset Touch Layout" icon:@"arrow.counterclockwise" perform:^(__unused UIViewController* presenter) { [owner resetLayout]; }];
@@ -601,20 +613,25 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         paperpad_present_rom_manager((__bridge void*)presenter);
     }];
     UIAction* original = [self menuAction:@"Launch Original" icon:@"arrow.up.forward.app" perform:^(UIViewController* presenter) {
-        fprintf(stderr,"[paperpad-boat] Launch Original requested\n");
-        [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"paperpad-original://launch"] options:@{} completionHandler:^(BOOL opened) {
-            fprintf(stderr,"[paperpad-boat] Launch Original opened=%d\n",(int)opened);
-            if (!opened) dispatch_async(dispatch_get_main_queue(), ^{
-                UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Original Is Unavailable" message:@"Install the PaperPad Original companion to use your Original saves. Boat keeps separate saves." preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-                [presenter presentViewController:alert animated:YES completion:nil];
-            });
-        }];
-    }];
-    UIAction* saves = [self menuAction:@"About Original Saves" icon:@"tray.full" perform:^(UIViewController* presenter) {
-        UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Your Original Saves" message:@"PaperPad Original keeps your existing progress. Boat uses a different save format and a separate app container. Launch Original to continue that save; removing a ROM does not remove saves." preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
-        [presenter presentViewController:alert animated:YES completion:nil];
+        [owner setModalControlsHidden:YES];
+        UIAlertController* explanation = [UIAlertController alertControllerWithTitle:@"Open PaperPad Original?"
+            message:@"This opens the original version of PaperPad. It is still supported, but has been superseded by this new version. Saves made in the older version remain in PaperPad Original. Your progress here stays separate."
+            preferredStyle:UIAlertControllerStyleAlert];
+        [explanation addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction* action) {
+            [owner setModalControlsHidden:NO];
+        }]];
+        [explanation addAction:[UIAlertAction actionWithTitle:@"Open Original" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction* action) {
+            [owner setModalControlsHidden:NO];
+            [UIApplication.sharedApplication openURL:[NSURL URLWithString:@"paperpad-original://launch"] options:@{} completionHandler:^(BOOL opened) {
+                fprintf(stderr,"[paperpad-boat] Launch Original opened=%d\n",(int)opened);
+                if (!opened) dispatch_async(dispatch_get_main_queue(), ^{
+                    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Original Is Unavailable" message:@"Install the PaperPad Original companion to continue saves from the older version. Your current PaperPad saves are unchanged." preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [presenter presentViewController:alert animated:YES completion:nil];
+                });
+            }];
+        }]];
+        [presenter presentViewController:explanation animated:YES completion:nil];
     }];
     UIAction* share = [self menuAction:@"Share Diagnostics & Logs…" icon:@"square.and.arrow.up" perform:^(UIViewController* presenter) {
         [owner setModalControlsHidden:YES];
@@ -624,10 +641,10 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         [owner setModalControlsHidden:YES];
         paperpad_present_problem_report((__bridge void*)presenter, ^{ [owner setModalControlsHidden:NO]; });
     }];
-    return [UIMenu menuWithTitle:@"PaperPad Boat" children:@[
+    return [UIMenu menuWithTitle:@"PaperPad" children:@[
         settings,
         [UIMenu menuWithTitle:@"Controls" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:@[touch, edit, reset]],
-        [UIMenu menuWithTitle:@"Game Data & Saves" image:[UIImage systemImageNamed:@"externaldrive"] identifier:nil options:0 children:@[rom,saves]],
+        [UIMenu menuWithTitle:@"Game Data & Saves" image:[UIImage systemImageNamed:@"externaldrive"] identifier:nil options:0 children:@[rom]],
         [UIMenu menuWithTitle:@"Support" image:[UIImage systemImageNamed:@"questionmark.circle"] identifier:nil options:0 children:@[share,report]],
         [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[original]]
     ]];
@@ -1113,6 +1130,146 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 // through the PaperPad C bridge (volume + graphics config) or the touch
 // overlay (layout editing/reset).
 // ---------------------------------------------------------------------------
+
+#ifdef PAPERPAD_APP
+// Both settings panels use the same native grouped controls and compact popover.
+@implementation PaperPadCompactSettingsController {
+    UISlider* _slider;
+    UILabel* _valueLabel;
+    UISwitch* _enabledSwitch;
+    UISegmentedControl* _resolution;
+    UISegmentedControl* _aspect;
+}
+- (instancetype)init {
+    return [super initWithStyle:UITableViewStyleInsetGrouped];
+}
+- (NSDictionary*)savedSettings {
+    return [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()] ?: @{};
+}
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = self.touchSettingsOnly ? @"Touch Settings" : @"Display & Audio";
+    self.navigationItem.rightBarButtonItem = [[[UIBarButtonItem alloc]
+        initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(done)] autorelease];
+    self.tableView.allowsSelection = NO;
+    self.tableView.rowHeight = 52;
+    self.tableView.sectionHeaderHeight = UITableViewAutomaticDimension;
+    self.tableView.sectionFooterHeight = UITableViewAutomaticDimension;
+    self.tableView.alwaysBounceVertical = NO;
+}
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    // Fit the actual native table contents, including Dynamic Type headers.
+    CGSize size = CGSizeMake(360, ceil(self.tableView.contentSize.height) + 56);
+    if (!CGSizeEqualToSize(self.preferredContentSize, size)) {
+        self.preferredContentSize = size;
+        self.navigationController.preferredContentSize = size;
+    }
+}
+- (void)viewDidDisappear:(BOOL)animated {
+    [super viewDidDisappear:animated];
+    [g_touch_overlay setModalControlsHidden:NO];
+}
+- (void)presentationControllerDidDismiss:(UIPresentationController*)presentationController {
+    [g_touch_overlay setModalControlsHidden:NO];
+}
+- (void)done {
+    [self dismissViewControllerAnimated:YES completion:^{ [g_touch_overlay setModalControlsHidden:NO]; }];
+}
+- (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView { return self.touchSettingsOnly ? 2 : 3; }
+- (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section { return 1; }
+- (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
+    return self.touchSettingsOnly ? @[@"On-screen Controls", @"Opacity"][section]
+                                 : @[@"Volume", @"Resolution", @"Aspect Ratio"][section];
+}
+- (NSString*)tableView:(UITableView*)tableView titleForFooterInSection:(NSInteger)section {
+    if (!self.touchSettingsOnly && section == 1) {
+        uint32_t scale = 0, width = 0, height = 0;
+        if (PaperPad_GetEffectiveRenderState(&scale, &width, &height))
+            return [NSString stringWithFormat:@"Currently %.2f× (%u×%u). Auto fits the screen up to 4×.", scale / 1000.0, width, height];
+        return @"Auto fits the screen at a whole-number scale up to 4×.";
+    }
+    return nil;
+}
+- (UITableViewCell*)tableView:(UITableView*)tableView cellForRowAtIndexPath:(NSIndexPath*)indexPath {
+    UITableViewCell* cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil] autorelease];
+    NSDictionary* saved = [self savedSettings];
+    NSInteger section = indexPath.section;
+    if (self.touchSettingsOnly && section == 0) {
+        cell.textLabel.text = @"Show Touch Controls";
+        _enabledSwitch = [[[UISwitch alloc] init] autorelease];
+        _enabledSwitch.on = saved[@"touchControls"] == nil || [saved[@"touchControls"] boolValue];
+        _enabledSwitch.accessibilityLabel = cell.textLabel.text;
+        [_enabledSwitch addTarget:self action:@selector(enabledChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = _enabledSwitch;
+        return cell;
+    }
+    UIView* control;
+    if ((self.touchSettingsOnly && section == 1) || (!self.touchSettingsOnly && section == 0)) {
+        _slider = [[[UISlider alloc] init] autorelease];
+        _slider.minimumValue = self.touchSettingsOnly ? 20 : 0;
+        _slider.maximumValue = 100;
+        NSString* key = self.touchSettingsOnly ? @"touchOpacity" : @"volume";
+        _slider.value = (saved[key] ? [saved[key] floatValue] : (self.touchSettingsOnly ? 0.7 : 1.0)) * 100;
+        _slider.accessibilityLabel = self.touchSettingsOnly ? @"Touch Opacity" : @"Master Volume";
+        [_slider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
+        _valueLabel = [[[UILabel alloc] init] autorelease];
+        _valueLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+        _valueLabel.adjustsFontForContentSizeCategory = YES;
+        _valueLabel.text = [NSString stringWithFormat:@"%.0f%%", _slider.value];
+        [_valueLabel setContentHuggingPriority:UILayoutPriorityRequired forAxis:UILayoutConstraintAxisHorizontal];
+        UIStackView* row = [[[UIStackView alloc] initWithArrangedSubviews:@[_slider, _valueLabel]] autorelease];
+        row.spacing = 12; row.alignment = UIStackViewAlignmentCenter;
+        control = row;
+    } else {
+        UISegmentedControl* segments = [[[UISegmentedControl alloc] initWithItems:section == 1
+            ? @[@"Auto", @"1×", @"2×", @"3×", @"4×"] : @[@"Original (4:3)", @"Fill Screen"]] autorelease];
+        segments.accessibilityLabel = section == 1 ? @"Rendering Resolution" : @"Aspect Ratio";
+        segments.selectedSegmentIndex = section == 1 ? resolutionModeFromSettings(saved) : [saved[@"aspect"] integerValue];
+        [segments addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
+        if (section == 1) _resolution = segments; else _aspect = segments;
+        control = segments;
+    }
+    control.translatesAutoresizingMaskIntoConstraints = NO;
+    [cell.contentView addSubview:control];
+    [NSLayoutConstraint activateConstraints:@[
+        [control.leadingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.leadingAnchor],
+        [control.trailingAnchor constraintEqualToAnchor:cell.contentView.layoutMarginsGuide.trailingAnchor],
+        [control.centerYAnchor constraintEqualToAnchor:cell.contentView.centerYAnchor],
+        [control.heightAnchor constraintGreaterThanOrEqualToConstant:32]
+    ]];
+    return cell;
+}
+- (void)saveValue:(id)value forKey:(NSString*)key {
+    NSMutableDictionary* saved = [[[self savedSettings] mutableCopy] autorelease];
+    saved[@"resolution"] = @(resolutionModeFromSettings(saved));
+    saved[@"schemaVersion"] = @4;
+    saved[key] = value;
+    [NSUserDefaults.standardUserDefaults setObject:saved forKey:settingsDefaultsKey()];
+}
+- (void)applyTouchSettings {
+    NSDictionary* saved = [self savedSettings];
+    BOOL enabled = saved[@"touchControls"] == nil || [saved[@"touchControls"] boolValue];
+    CGFloat opacity = saved[@"touchOpacity"] ? [saved[@"touchOpacity"] doubleValue] : 0.7;
+    [g_touch_overlay setGameplayControlsEnabled:enabled opacity:opacity];
+}
+- (void)enabledChanged:(UISwitch*)sender {
+    [self saveValue:@(sender.on) forKey:@"touchControls"];
+    [self applyTouchSettings];
+}
+- (void)sliderChanged:(UISlider*)sender {
+    _valueLabel.text = [NSString stringWithFormat:@"%.0f%%", sender.value];
+    sender.accessibilityValue = _valueLabel.text;
+    [self saveValue:@(sender.value / 100.0) forKey:self.touchSettingsOnly ? @"touchOpacity" : @"volume"];
+    if (self.touchSettingsOnly) [self applyTouchSettings]; else PaperPad_SetAudioVolume(sender.value / 100.0);
+}
+- (void)graphicsChanged:(UISegmentedControl*)sender {
+    [self saveValue:@(sender.selectedSegmentIndex) forKey:sender == _resolution ? @"resolution" : @"aspect"];
+    NSDictionary* saved = [self savedSettings];
+    PaperPad_SetGraphicsConfig((int)resolutionModeFromSettings(saved), [saved[@"aspect"] intValue], 0);
+}
+@end
+#endif
 
 @implementation PaperPadSettingsViewController {
     UISlider* _volumeSlider;

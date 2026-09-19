@@ -3,7 +3,7 @@
 import hashlib,json,os,plistlib,re,shutil,subprocess,sys,tempfile,zipfile
 from pathlib import Path
 root=Path(__file__).resolve().parents[1];build=root/'build-paperboat-ios'
-output=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else root/'artifacts/PaperPad-Boat-0.2.0-dev-unsigned.ipa'
+output=Path(sys.argv[1]).resolve() if len(sys.argv)>1 else root/'artifacts/PaperPad.ipa'
 subprocess.run(['python3',str(root/'scripts/verify-paperboat.py'),'--build-dir',str(build)],check=True)
 sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 record=json.loads((build/'PAPERPAD_BUILD.json').read_text())
@@ -15,7 +15,7 @@ for p,digest in record['shellInputs'].items():
     if sha(root/p)!=digest:raise SystemExit(f'Built shell input changed: {p}')
 if sha(build/'Paperboat.app/Paperboat')!=record['executableSHA256']:raise SystemExit('Built executable changed.')
 with tempfile.TemporaryDirectory(prefix='paperpad-boat-package-') as tmp:
-    stage=Path(tmp);app=stage/'Payload/PaperPadBoat.app';app.parent.mkdir()
+    stage=Path(tmp);app=stage/'Payload/PaperPad.app';app.parent.mkdir()
     shutil.copytree(build/'Paperboat.app',app)
     subprocess.run(['codesign','--remove-signature',str(app)],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
     shutil.rmtree(app/'_CodeSignature',ignore_errors=True)
@@ -32,7 +32,8 @@ with tempfile.TemporaryDirectory(prefix='paperpad-boat-package-') as tmp:
                 dest=app/'Licenses'/label/file;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
     info=plistlib.loads((app/'Info.plist').read_bytes())
     assert info['CFBundleIdentifier']=='com.chrissotraidis.paperpad.boat'
-    assert info['CFBundleShortVersionString']=='0.2.0' and info['CFBundleVersion']=='5'
+    assert info['CFBundleShortVersionString']=='0.2.0' and info['CFBundleVersion']=='6'
+    assert info['CFBundleDisplayName']=='PaperPad' and info['CFBundleName']=='PaperPad'
     assert info['MinimumOSVersion']=='16.3'
     assert info.get('UIDeviceFamily')==[1,2], 'Boat must declare native iPhone and iPad support'
     assert info.get('UIRequiresFullScreen') is True

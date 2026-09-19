@@ -12,7 +12,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>PaperPad Boat</string>
+    <string>PaperPad</string>
     <key>CFBundleExecutable</key>
     <string>@EXECUTABLE_NAME@</string>
     <key>CFBundleIdentifier</key>
@@ -20,13 +20,13 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>PaperPad Boat</string>
+    <string>PaperPad</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
     <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>5</string>
+    <string>6</string>
     <key>PaperPadBuildProfile</key>
     <string>PaperBoat development</string>
     <key>GCSupportedGameControllers</key>
