@@ -1,7 +1,7 @@
 # PaperPad
 
 
-**Development:** PaperPad Original remains the existing release. A separate [PaperPad Boat build](docs/PAPERBOAT_DEVELOPMENT.md) now integrates PaperBoat with the native PaperPad controls and diagnostics. It is a private development candidate, not a new public release.
+**Next version:** [PaperPad 0.2.0](docs/PAPERBOAT_DEVELOPMENT.md) uses [Harbour Masters’ PaperBoat](https://github.com/HarbourMasters/PaperBoat) with native PaperPad controls and diagnostics. The app/download remain named PaperPad. [Release notes](docs/RELEASE_NOTES_0.2.0.md) describe the candidate; public Preview 2 remains available while release qualification is completed. The Original build and its saves remain separate.
 
 ![PaperPad battle with Mario and three flying Goombas on iPad](docs/release-audit/28-paperpad-flying-goomba-battle-2026-08-14.png)
 
