@@ -8,7 +8,7 @@ PaperPad's application repository and Preview 2 product remain intact. This chan
 
 The upstream base stays `098be0a501eecd5bb894a47964061d05eeedc3a2`. The imported source commit `40351e667c599ef7bdf18841d5fd2213d1252307` matches all **11,219** files and modes in the prepared Preview 2 checkout. [Patch map](source-maintenance/patch-map.json) identifies the source commit replacing each of 25 production patches. Five `mstan-*` patch records were historical already. All 30 remain available as non-production history.
 
-The selected gitlink adds two build-only exceptions: librecomp accepts an explicit `MUPEN_RSP_HLE_DIR` cache path, and the app points it to its unchanged pinned `ref/mupen64plus-rsp-hle`. This is necessary because ReCut moved from ignored `ref/` into `vendor/`. RT64 also retains the iOS deployment target during dependency checks instead of assigning the macOS 10.15 default, which Xcode 27 rejects as an iOS version. Desktop targeting is unchanged. No runtime algorithm or upstream version changes. [The exception manifest](source-maintenance/path-exceptions.json) records its exact hash and commit; [the original prepared manifest](source-maintenance/prepared-recut.json) remains unchanged.
+The selected gitlink adds two build-only exceptions: librecomp accepts an explicit `MUPEN_RSP_HLE_DIR` cache path, and the app points it to its unchanged pinned `ref/mupen64plus-rsp-hle`. This is necessary because ReCut moved from ignored `ref/` into `vendor/`. RT64 also retains the iOS deployment target during dependency checks instead of assigning the macOS 10.15 default, which Xcode 27 rejects as an iOS version. Desktop targeting is unchanged. No runtime algorithm or upstream version changes. [The exception manifest](source-maintenance/path-exceptions.json) records their exact hashes and commits; [the original prepared manifest](source-maintenance/prepared-recut.json) remains unchanged.
 
 ReCut's runtime/compiler/renderer were flattened into ordinary tracked source upstream. Keeping them together preserves that actual ancestry and exact effective contents. The retained nested `.gitmodules` files describe historical projects but there are no nested gitlinks in this ReCut snapshot. Do not replace them with arbitrary current upstream submodule tips.
 
@@ -29,7 +29,7 @@ From a clean committed app tree with initialized dependencies:
 ```sh
 python3 scripts/source-archive.py --output /absolute/private/output/PaperPad-source.tar.gz
 mkdir /absolute/private/restore
- tar -xzf /absolute/private/output/PaperPad-source.tar.gz -C /absolute/private/restore
+tar -xzf /absolute/private/output/PaperPad-source.tar.gz -C /absolute/private/restore
 python3 /absolute/private/restore/PaperPad-source/scripts/source-archive.py --verify /absolute/private/restore/PaperPad-source
 ```
 
