@@ -1,7 +1,21 @@
 # PaperPad
 
 
-**Next version:** [PaperPad 0.2.0](docs/PAPERBOAT_DEVELOPMENT.md) uses [Harbour Masters’ PaperBoat](https://github.com/HarbourMasters/PaperBoat) with native PaperPad controls and diagnostics. The app/download remain named PaperPad. [Release notes](docs/RELEASE_NOTES_0.2.0.md) describe the candidate; public Preview 2 remains available while release qualification is completed. The Original build and its saves remain separate.
+PaperPad 0.2.0 uses [Harbour Masters’ PaperBoat](https://github.com/HarbourMasters/PaperBoat), with PaperPad's native Apple touch controls, settings, ROM import and diagnostics. The app and download are named **PaperPad**.
+
+[Download PaperPad.ipa](https://github.com/chrissotraidis/paperpad/releases/tag/v0.2.0-preview.1) · [Release notes](docs/RELEASE_NOTES_0.2.0.md) · [Build and exact source pins](docs/PAPERBOAT_DEVELOPMENT.md)
+
+- iPhone/iPad, iOS/iPadOS **16.3 or newer**; unsigned IPA for signing with your own credentials.
+- Supply an unmodified **Paper Mario (US) 1.0** ROM locally. No ROM or extracted game archive is included.
+- Floating touch-down stick, compact native settings, controller support, Auto/1×–4× rendering and shared diagnostics.
+- The new app keeps separate saves from **PaperPad Original**. Earlier progress stays in Original; there is no automatic conversion.
+- Title-menu animation stutter remains a known issue. See the release notes for test scope and limitations.
+
+The release includes exact nested sources, notices, build provenance and checksums. [Source updates and offline archive builds](docs/PAPERBOAT_DEVELOPMENT.md#version-020-source-delivery) and [rights limitations](RIGHTS_AND_LICENSES.md) are documented. Report app/platform issues here with the build and diagnostic log; do not assume upstream owns an Apple-port issue.
+
+## PaperPad Original reference
+
+The following screenshots, platform status and instructions describe the retained **Original Preview 2** build. Its ReCut/RT64 runtime and earlier saves remain available separately; they are not the PaperBoat build above.
 
 ![PaperPad battle with Mario and three flying Goombas on iPad](docs/release-audit/28-paperpad-flying-goomba-battle-2026-08-14.png)
 
@@ -26,7 +40,7 @@ This repository contains integration source, pinned maintained dependencies, scr
 
 ## Project status
 
-PaperPad `v0.1.0-preview.2` is the current public iPhone and iPad preview. The release provides a ROM-free, unsigned IPA that users sign with their own Apple credentials. There is no TestFlight, App Store release, signed download, or notarized macOS build.
+PaperPad Original `v0.1.0-preview.2` is the retained earlier iPhone and iPad preview. The release provides a ROM-free, unsigned IPA that users sign with their own Apple credentials. There is no TestFlight, App Store release, signed download, or notarized macOS build.
 
 | Target | Current status |
 |---|---|

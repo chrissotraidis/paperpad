@@ -1,4 +1,4 @@
-# PaperPad 0.2.0 — release notes
+# PaperPad 0.2.0 Preview 1
 
 PaperPad now runs on Harbour Masters’ PaperBoat foundation, with the native Apple controls and conveniences you already know.
 
@@ -17,7 +17,7 @@ PaperPad now runs on Harbour Masters’ PaperBoat foundation, with the native Ap
 
 The new PaperPad and PaperPad Original use separate save formats and app containers. Earlier saves remain in Original; they are not automatically converted. Launch Original requires the Original companion with its launch URL registered. Your new-version saves remain in the new app.
 
-This update was installed in place on the test iPad, and its current save, ROM data and preferences were verified unchanged afterward. Keep the same signing identity and bundle identifier when updating; do not uninstall to work around a signing mismatch.
+The build 6 application code was installed in place on the test iPad, and its current save, ROM data and preferences were verified unchanged afterward. Release build 7 retains that application code and adds version/notice/source-delivery changes; it was not separately installed on hardware. Keep the same signing identity and bundle identifier when updating; do not uninstall to work around a signing mismatch.
 
 ## Known issue
 
@@ -28,3 +28,5 @@ The title-menu animation can stutter. Startup logs include audio underruns and a
 Built on [Harbour Masters’ PaperBoat](https://github.com/HarbourMasters/PaperBoat), with credit to the Paper Mario decompilation/DX, libultraship, Torch and all included contributors. PaperPad supplies the Apple integration, native touch interface and diagnostics. Individual licenses and notices are retained.
 
 The unsigned IPA requires user signing and a legally obtained supported game ROM. No ROM, extracted game archive, saves or signing credentials are included.
+
+Requires iOS/iPadOS 16.3 or newer. The release includes the exact nested source bundle, build provenance, per-component notices and SHA-256 checksums. Apple SDKs and signing credentials are supplied separately.
