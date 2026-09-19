@@ -14,6 +14,7 @@ set(EXECUTABLE_NAME Paperboat)
 configure_file("${PAPERPAD_APP_ROOT}/apple/paperboat/Info.plist.in" "${CMAKE_BINARY_DIR}/PaperPadBoat.plist" @ONLY)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_BINARY_DIR}/PaperPadBoat.plist"
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.chrissotraidis.paperpad.boat")
 target_link_libraries(${PROJECT_NAME} PRIVATE "-framework UIKit" "-framework UniformTypeIdentifiers")
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

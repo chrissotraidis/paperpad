@@ -72,7 +72,13 @@ extern "C" void PaperPadBoat_Ready() {
  CVarSetInteger("gOpenWindows.ControllerDisconnected",0);
  if(SDL_Window* window=SDL_GetKeyboardFocus()?SDL_GetKeyboardFocus():SDL_GetWindowFromID(1)) {
   SDL_SysWMinfo info{};SDL_VERSION(&info.version);
-  if(SDL_GetWindowWMInfo(window,&info)) paperpad_touch_attach((__bridge void*)info.info.uikit.window);
+  if(SDL_GetWindowWMInfo(window,&info)) {
+   UIWindow* nativeWindow=info.info.uikit.window;
+   paperpad_touch_attach((__bridge void*)nativeWindow);
+   CGSize bounds=nativeWindow.bounds.size,screen=nativeWindow.screen.bounds.size;
+   std::fprintf(stderr,"[paperpad-boat] native window idiom=%ld bounds=%.0fx%.0f screen=%.0fx%.0f scale=%.1f\n",
+     (long)UIDevice.currentDevice.userInterfaceIdiom,bounds.width,bounds.height,screen.width,screen.height,nativeWindow.screen.scale);
+  }
  }
  std::fprintf(stderr,"[paperpad-boat] native controls attached; game initialized; private JSON saves isolated from Original\n");
 }

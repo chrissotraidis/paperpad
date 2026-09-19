@@ -26,7 +26,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>3</string>
     <key>PaperPadBuildProfile</key>
     <string>PaperBoat development</string>
     <key>GCSupportedGameControllers</key>
@@ -47,6 +47,8 @@
     <dict/>
     <key>UIRequiredDeviceCapabilities</key>
     <array><string>arm64</string><string>metal</string></array>
+    <key>UIDeviceFamily</key>
+    <array><integer>1</integer><integer>2</integer></array>
     <key>UIRequiresFullScreen</key>
     <true/>
     <key>UIStatusBarHidden</key>
