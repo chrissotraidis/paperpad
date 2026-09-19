@@ -4,6 +4,10 @@ import json, os, subprocess
 from pathlib import Path
 root=Path(__file__).resolve().parents[1]
 subprocess.run(['python3',str(root/'scripts/paperboat-source-archive.py'),'--verify',str(root)],check=True)
+# Recreate transient Git indexes; the archive omits local filesystem metadata.
+manifest=json.loads((root/'SOURCE_MANIFEST.json').read_text())
+for rel in manifest['repositories']:
+    subprocess.run(['git','-C',str(root/rel),'read-tree','HEAD'],check=True)
 lock=json.loads((root/'paperboat.lock.json').read_text());build=root/'build-paperboat-ios'
 args=['cmake','-S',str(root/'vendor/paperboat'),'-B',str(build),'-G','Ninja',
       '-DCMAKE_TOOLCHAIN_FILE=cmake/ios.paperboat.toolchain.cmake','-DPLATFORM=OS64',

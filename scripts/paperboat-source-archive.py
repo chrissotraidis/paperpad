@@ -27,7 +27,8 @@ def snapshot(source, commit, destination):
     objects = git(source, 'rev-list', '--objects', '--no-object-names', commit+'^{tree}')
     packed = git(source, 'pack-objects', '--stdout', input=commit.encode()+b'\n'+objects)
     destination.mkdir(parents=True, exist_ok=True)
-    subprocess.run(['git','init','-q',str(destination)],check=True)
+    subprocess.run(['git','init','--template=','-q',str(destination)],check=True)
+    git(destination, 'config', 'core.logAllRefUpdates', 'false')
     subprocess.run(['git','-C',str(destination),'index-pack','--stdin'],input=packed,check=True,stdout=subprocess.DEVNULL)
     (destination/'.git/shallow').write_text(commit+'\n')
     branch = git(source, 'rev-parse', '--abbrev-ref', 'HEAD', text=True).strip()
@@ -59,6 +60,8 @@ def create(output):
             dest = stage/'build-paperboat-ios'/rel
             dest.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(build/rel,dest)
+        (stage/'.git/info').mkdir(exist_ok=True)
+        for index in stage.rglob('.git/index'): index.unlink()
         with (stage/'.git/info/exclude').open('a') as f: f.write('\n/SOURCE_MANIFEST.json\n')
         files = {str(p.relative_to(stage)):identity(p) for p in sorted(stage.rglob('*')) if p.is_file() or p.is_symlink()}
         manifest = {'applicationCommit':commit,'repositories':repos,'files':files,
