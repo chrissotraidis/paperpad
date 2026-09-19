@@ -4,5 +4,11 @@
     "mode": 420,
     "reason": "Allow explicit source path after moving ReCut to vendor; no compile behavior change.",
     "commit": "43f61ea373e02372ca9e0330beccf97ec4c72e44"
+  },
+  "lib/rt64/CMakeLists.txt": {
+    "sha256": "9f27c94de881091249e28891fe2552c7a3892553763abad431b3cf3ad834e519",
+    "mode": 420,
+    "reason": "Preserve the iOS 15.0 target during RT64 dependency probes; desktop default remains 10.15. Xcode 27 rejects 10.15 as an iOS target.",
+    "commit": "9d6eda9eec3b170c65d452ca2e2f7ba64c074632"
   }
 }

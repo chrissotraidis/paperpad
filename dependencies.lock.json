@@ -14,7 +14,7 @@
     },
     "paperMarioReCut": {
       "url": "https://github.com/chrissotraidis/Paper-Mario-ReCut.git",
-      "commit": "43f61ea373e02372ca9e0330beccf97ec4c72e44",
+      "commit": "9d6eda9eec3b170c65d452ca2e2f7ba64c074632",
       "provenance": "Prepared Preview 2 source, unchanged upstream base; see docs/source-maintenance/patch-map.json",
       "upstreamUrl": "https://github.com/SMCGames/Paper-Mario-ReCut.git",
       "upstreamCommit": "098be0a501eecd5bb894a47964061d05eeedc3a2",

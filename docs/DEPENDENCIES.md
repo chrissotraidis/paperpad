@@ -13,7 +13,7 @@ Verified source-maintenance snapshot: 2026-09-19. `dependencies.lock.json` is th
 
 ## Transitive build inputs
 
-ReCut vendors N64ModernRuntime, N64Recomp, RT64, shader compilers, and nested source as ordinary tracked files. Retained nested `.gitmodules` files do not correspond to nested gitlinks in this snapshot. The maintained branch preserves the exact prepared source from upstream base `098be0a501eecd5bb894a47964061d05eeedc3a2`, with one explicit build-path exception; see [source maintenance](SOURCE_MAINTENANCE.md). The build also uses Apple SDK frameworks and host tools including CMake, Ninja, Python, Rust/Cargo, GNU cpp, and GNU binutils. The table above is not a complete binary-notice manifest.
+ReCut vendors N64ModernRuntime, N64Recomp, RT64, shader compilers, and nested source as ordinary tracked files. Retained nested `.gitmodules` files do not correspond to nested gitlinks in this snapshot. The maintained branch preserves the exact prepared source from upstream base `098be0a501eecd5bb894a47964061d05eeedc3a2`, with two explicit build-only exceptions; see [source maintenance](SOURCE_MAINTENANCE.md). The build also uses Apple SDK frameworks and host tools including CMake, Ninja, Python, Rust/Cargo, GNU cpp, and GNU binutils. The table above is not a complete binary-notice manifest.
 
 Before distributing a binary:
 
