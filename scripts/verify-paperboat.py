@@ -37,4 +37,4 @@ if args.build_dir:
     for path, digest in lock['fetchedFiles'].items():
         if hashlib.sha256((args.build_dir / path).read_bytes()).hexdigest() != digest:
             raise SystemExit(f'Fetched file hash mismatch: {path}')
-    print('All 14 fetched dependency commits and two downloaded file hashes verified.')
+    print(f"All {len(lock['buildDependencies'])} fetched dependency commits and {len(lock['fetchedFiles'])} downloaded file hashes verified.")

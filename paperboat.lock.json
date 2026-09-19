@@ -100,6 +100,7 @@
   },
   "fetchedFiles": {
     "_deps/sse2neon/sse2neon.h": "0624a1270fc88a67e6b886cd0e33e322d93de4b3a760b3373dc3a66e713bd43f",
-    "gamecontrollerdb.txt": "07ec5b753e685c4829987919b27905cc3c45c8e18c11b3046e275fcf38b0f3cb"
+    "gamecontrollerdb.txt": "07ec5b753e685c4829987919b27905cc3c45c8e18c11b3046e275fcf38b0f3cb",
+    "_deps/stb/stb_image.h": "c54b15a689e6a1f32c75e2ec23afa442e3e0e37e894b73c1974d08679b20dd5c"
   }
 }
