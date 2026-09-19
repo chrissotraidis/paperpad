@@ -5,7 +5,7 @@ The owner's 2026-09-19 decision is to keep **two builds**. Original remains the 
 | Product | Identity | Current delivery |
 |---|---|---|
 | PaperPad Original | `com.chrissotraidis.paperpad` | Existing public `v0.1.0-preview.2`, unchanged |
-| PaperPad Boat | `com.chrissotraidis.paperpad.boat` | Private iPad test, 0.2.0/build 3; iOS/iPadOS 16.3+ |
+| PaperPad Boat | `com.chrissotraidis.paperpad.boat` | Private iPad test, 0.2.0/build 4; iOS/iPadOS 16.3+ |
 
 The original app's source-maintenance PR #6 remains separate. This branch builds on that source/docs work but does not change Original's runtime pin or build entry points. The same UIKit files provide touch layouts, independent phone/tablet preferences, ROM validation, settings and bounded diagnostics. Boat-specific hooks compile only for its own target. The earlier audit's single-successor recommendation is superseded by the owner's two-build instruction.
 
@@ -71,3 +71,15 @@ The installed pair's URL registrations and versions were read back. Original lau
 The owner reported that build 2 opened in a compatibility window. The Boat Ninja bundle omitted `UIDeviceFamily`, unlike Original's Xcode-produced `[1, 2]` declaration. The initial iPhone Simulator test did not cover this packaging boundary. Commit `6a5446f` adds explicit iPhone/iPad family metadata, the matching Xcode target property, package assertions for native iPad/full-screen/landscape support and startup window diagnostics.
 
 Build 3 was audited, signed and installed in place on the same iPad. Its live log reports `idiom=1 bounds=1366x1024 screen=1366x1024 scale=2.0`, establishing native iPad mode and a window matching the full screen. The private unsigned IPA SHA-256 is `a98526d7cb2d1d0af9d380b0883646fa4e965335e770d41c9c409252a1b0cf2d`. Boat's 20 pre-update files were backed up; ROM/archive bytes and existing configuration values were preserved (upstream added missing controller defaults). Original was untouched during this correction. Physical gameplay and interaction acceptance remains separate from the window-size proof.
+
+### Build 4: menu, floating stick, reporting and Auto
+
+At app source `07ac459`, the three-dot button uses a native grouped UIMenu, following SunPad's navigation pattern: Settings, Controls, Game Data & Saves, Support and Launch Original. Diagnostics/ROM actions are removed from the settings sheet. Support offers a reviewable GitHub issue draft and the bounded diagnostics share; reports name this repository, its issues URL, the actual engine/upstream, source commit when packaged, and optional reporter context. No issue is posted automatically.
+
+The analog stick is invisible at rest, anchors at the first left-side touch, keeps that finger's ownership across movement, rejects a second stick owner and disappears on release. Buttons retain hit-test priority. Layout editing still displays the editable resting control. This follows KartPad/MeleePad floating-stick behavior; existing N64 response mapping remains intact.
+
+Boat Auto previously used a fractional window-sized render target while its UI claimed whole-number scaling. Auto now uses the Metal drawable size to choose a whole-number scale from 1x through 4x, with fixed-scale modes unchanged. The real iPad reports a 2732×2048 drawable, Auto=4x and sustained 1280×960 internal rendering in 4:3 mode. Tests cover iPad/phone, smaller viewports, Fill Screen and unavailable-drawable fallback. This is deterministic resolution selection, not adaptive frame-rate scaling.
+
+Clean device/Simulator builds, real save-codec/input/Auto tests, repository checks, package audit and hosted CI passed. Private unsigned IPA SHA-256: `d4c1de6c26530c8a0e156ce01f4aa8b0189e365e0b5a972abff131bab5a74dda`. Build 4 was signed with the established identity and installed in place. QuickTime's existing physical iPad mirror showed full-screen startup with the stick hidden at rest. Runtime logs show native iPad bounds and the expected render size. Actual menu/submenu/share interactions and the moving thumb gesture remain owner acceptance unless separately recorded.
+
+The owner's apparent missing save was investigated before edits: both Original FlashRAM files still matched the pre-deployment backup byte-for-byte, and the latest records for two logical save slots passed checksums. Boat had no save files in its separate container. No save was deleted or converted. Original remains the way to continue that existing progress; a verified endian-aware native-format import is separate work. The menu now explains this distinction. Boat's complete relevant container was backed up/restored/hash-verified before update; ROM/archive hashes and existing native preferences matched after update. Original was untouched.
