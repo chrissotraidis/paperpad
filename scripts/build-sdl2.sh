@@ -6,7 +6,7 @@ source "$script_dir/lib/common.sh"
 
 source_dir="$PAPERPAD_REF/SDL2"
 build_dir="$PAPERPAD_ROOT/build-macos-sdl2"
-[[ -d "$source_dir/.git" ]] || die "SDL2 is missing; run scripts/clone-sources.sh"
+[[ -f "$source_dir/CMakeLists.txt" ]] || die "SDL2 is missing; run scripts/clone-sources.sh"
 
 cmake -S "$source_dir" -B "$build_dir" -G Ninja \
     -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TEST=OFF -DSDL_TESTS=OFF \

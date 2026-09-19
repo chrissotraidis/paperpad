@@ -5,7 +5,7 @@ Verified source-maintenance snapshot: 2026-09-19. `dependencies.lock.json` is th
 | Component | Exact revision | Purpose | License / rights note |
 |---|---|---|---|
 | [pmret/papermario](https://github.com/pmret/papermario) | `c61db66e3cce7e8fa5b53d3e9ecd01632e7b064a` | Paper Mario US decompilation, ROM verification, ELF metadata | Source-available decompilation; Nintendo material remains excluded; inspect pinned notices before redistribution |
-| [maintained Paper-Mario-ReCut](https://github.com/chrissotraidis/Paper-Mario-ReCut/tree/codex/paperpad-preview2-source) | `43f61ea373e02372ca9e0330beccf97ec4c72e44` | Game-specific N64Recomp integration; vendors N64ModernRuntime and RT64 | Multiple nested components and licenses; inspect the pinned tree |
+| [maintained Paper-Mario-ReCut](https://github.com/chrissotraidis/Paper-Mario-ReCut/tree/codex/paperpad-preview2-source) | `9d6eda9eec3b170c65d452ca2e2f7ba64c074632` | Game-specific N64Recomp integration; vendors N64ModernRuntime and RT64 | Multiple nested components and licenses; inspect the pinned tree |
 | [mupen64plus-rsp-hle](https://github.com/mupen64plus/mupen64plus-rsp-hle) | `8a7a472a7172eb2c8725b305eae26818ed7b51a2` | HLE NAUDIO backend | Compiled HLE files carry GPL-2.0-or-later headers; preserve LICENSES and file notices |
 | [SDL 2.32.10](https://github.com/libsdl-org/SDL) | `5d249570393f7a37e037abf22cd6012a4cc56a71` | Window, input, controllers, and audio | zlib license in pinned source |
 | [zstd 1.5.6](https://github.com/facebook/zstd) | `794ea1b0afca0f020f4e57b6732332231fb23c70` | Compression source/CMake files needed by the flattened ReCut vendor tree | BSD/GPL dual layout; shipped library portions and notices must be audited |

@@ -2,6 +2,9 @@
 set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source "$script_dir/lib/common.sh"
+if [[ -f "$PAPERPAD_ROOT/SOURCE_MANIFEST.json" ]]; then
+    exec "$script_dir/verify-sources.sh"
+fi
 recut="$PAPERPAD_ROOT/vendor/paper-mario-recut"
 if [[ -e "$recut/.git" ]]; then
     [[ -z "$(git -C "$recut" status --porcelain --untracked-files=all)" ]] ||

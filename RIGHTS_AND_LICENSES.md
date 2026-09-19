@@ -18,9 +18,9 @@ PaperPad's integration source, scripts, documentation, and original artwork do n
 
 ## Release packages
 
-The `v0.1.0-preview.1` binary workflow proves that the unsigned IPA excludes ROMs, extracted assets, generated AOT source, saves, credentials, signing material, personal paths, and private device data. The package includes PaperPad's notices and the license/rights files collected for the exact shipped dependency revisions. The matching release tag identifies its source snapshot.
+The audited `v0.1.0-preview.2` package confirms that the unsigned IPA excludes ROMs, extracted assets, generated AOT source, saves, credentials, signing material, personal paths, and private device data. The package includes PaperPad's notices and the license/rights files collected for the exact shipped dependency revisions. The matching release tag identifies its source snapshot.
 
-Preview 1 is a ROM-free, unsigned public package for users to sign with their own Apple credentials. It is not a maintainer-signed, notarized, TestFlight, or App Store release. Use [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) before publishing another source or binary release.
+Preview 2 is a ROM-free, unsigned public package for users to sign with their own Apple credentials. It is not a maintainer-signed, notarized, TestFlight, or App Store release. Use [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) before publishing another source or binary release.
 
 ## Source-maintenance qualification (2026-09-19)
 
