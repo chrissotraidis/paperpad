@@ -26,6 +26,7 @@ extern "C" void PaperPadBoat_SetInputSuspended(int);
 @class PaperPadSettingsViewController;
 
 @interface PaperPadSettingsViewController : UIViewController
+@property(nonatomic) BOOL touchSettingsOnly;
 - (void)refreshFromDefaults;
 @end
 
@@ -211,6 +212,24 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         _utilityButton.menu = [self modernUtilityMenu];
         [_utilityButton setTitle:nil forState:UIControlStateNormal];
         [_utilityButton setImage:[UIImage systemImageNamed:@"ellipsis"] forState:UIControlStateNormal];
+        // SunPad's fixed capsule appearance avoids iPadOS synthesizing a square
+        // selected-state background during primary-menu dismissal.
+        UIButtonConfiguration* configuration = [UIButtonConfiguration plainButtonConfiguration];
+        configuration.image = [UIImage systemImageNamed:@"ellipsis"];
+        configuration.baseForegroundColor = UIColor.whiteColor;
+        configuration.contentInsets = NSDirectionalEdgeInsetsZero;
+        configuration.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        UIBackgroundConfiguration* background = [UIBackgroundConfiguration clearConfiguration];
+        background.backgroundColor = [UIColor colorWithWhite:0.02 alpha:0.64];
+        background.cornerRadius = 22.0;
+        background.strokeColor = [UIColor colorWithWhite:1.0 alpha:0.34];
+        background.strokeWidth = 1.0;
+        configuration.background = background;
+        _utilityButton.changesSelectionAsPrimaryAction = NO;
+        _utilityButton.automaticallyUpdatesConfiguration = NO;
+        _utilityButton.configuration = configuration;
+        _utilityButton.backgroundColor = UIColor.clearColor;
+        _utilityButton.layer.borderWidth = 0.0;
         _utilityButton.tintColor = UIColor.whiteColor;
 #else
         [_utilityButton addTarget:self action:@selector(presentUtilityMenu)
@@ -563,9 +582,16 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 }
 - (UIMenu*)modernUtilityMenu {
     __unsafe_unretained PaperPadTouchOverlayView* owner = self;
-    UIAction* settings = [self menuAction:@"Settings" icon:@"slider.horizontal.3" perform:^(UIViewController* presenter) {
+    UIAction* settings = [self menuAction:@"Display & Audio" icon:@"slider.horizontal.3" perform:^(UIViewController* presenter) {
         [owner setModalControlsHidden:YES];
         PaperPadSettingsViewController* settings = [PaperPadSettingsViewController new];
+        settings.modalPresentationStyle = UIModalPresentationFormSheet;
+        [presenter presentViewController:settings animated:YES completion:nil];
+    }];
+    UIAction* touch = [self menuAction:@"Touch Settings" icon:@"hand.point.up" perform:^(UIViewController* presenter) {
+        [owner setModalControlsHidden:YES];
+        PaperPadSettingsViewController* settings = [PaperPadSettingsViewController new];
+        settings.touchSettingsOnly = YES;
         settings.modalPresentationStyle = UIModalPresentationFormSheet;
         [presenter presentViewController:settings animated:YES completion:nil];
     }];
@@ -600,7 +626,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     }];
     return [UIMenu menuWithTitle:@"PaperPad Boat" children:@[
         settings,
-        [UIMenu menuWithTitle:@"Controls" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:@[edit, reset]],
+        [UIMenu menuWithTitle:@"Controls" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:@[touch, edit, reset]],
         [UIMenu menuWithTitle:@"Game Data & Saves" image:[UIImage systemImageNamed:@"externaldrive"] identifier:nil options:0 children:@[rom,saves]],
         [UIMenu menuWithTitle:@"Support" image:[UIImage systemImageNamed:@"questionmark.circle"] identifier:nil options:0 children:@[share,report]],
         [UIMenu menuWithTitle:@"" image:nil identifier:nil options:UIMenuOptionsDisplayInline children:@[original]]
@@ -1127,50 +1153,60 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [content addSubview:stack];
 
     UILabel* title = [self label:@"PaperPad Settings"];
+#ifdef PAPERPAD_APP
+    title.text = self.touchSettingsOnly ? @"Touch Settings" : @"Display & Audio";
+#else
     title.text = @"PaperPad Settings";
+#endif
     title.font = [UIFont boldSystemFontOfSize:24.0];
     title.accessibilityTraits |= UIAccessibilityTraitHeader;
     [stack addArrangedSubview:title];
 
-    // Master volume.
-    UIStackView* volumeRow = [[UIStackView alloc] init];
-    volumeRow.axis = UILayoutConstraintAxisHorizontal;
-    [volumeRow addArrangedSubview:[self label:@"Master Volume"]];
-    _volumeLabel = [self label:@"100%"];
-    _volumeLabel.textAlignment = NSTextAlignmentRight;
-    [volumeRow addArrangedSubview:_volumeLabel];
-    [stack addArrangedSubview:volumeRow];
-    _volumeSlider = [[UISlider alloc] init];
-    _volumeSlider.minimumValue = 0.0;
-    _volumeSlider.maximumValue = 100.0;
-    _volumeSlider.continuous = YES;
-    _volumeSlider.accessibilityLabel = @"Master Volume";
-    [_volumeSlider addTarget:self action:@selector(volumeChanged:) forControlEvents:UIControlEventValueChanged];
-    [_volumeSlider.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
-    [stack addArrangedSubview:_volumeSlider];
+    if (!self.touchSettingsOnly) {
+        // Master volume.
+        UIStackView* volumeRow = [[UIStackView alloc] init];
+        volumeRow.axis = UILayoutConstraintAxisHorizontal;
+        [volumeRow addArrangedSubview:[self label:@"Master Volume"]];
+        _volumeLabel = [self label:@"100%"];
+        _volumeLabel.textAlignment = NSTextAlignmentRight;
+        [volumeRow addArrangedSubview:_volumeLabel];
+        [stack addArrangedSubview:volumeRow];
+        _volumeSlider = [[UISlider alloc] init];
+        _volumeSlider.minimumValue = 0.0;
+        _volumeSlider.maximumValue = 100.0;
+        _volumeSlider.continuous = YES;
+        _volumeSlider.accessibilityLabel = @"Master Volume";
+        [_volumeSlider addTarget:self action:@selector(volumeChanged:) forControlEvents:UIControlEventValueChanged];
+        [_volumeSlider.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
+        [stack addArrangedSubview:_volumeSlider];
 
-    // Resolution.
-    [stack addArrangedSubview:[self label:@"Resolution"]];
-    _resolutionControl = [[UISegmentedControl alloc]
-        initWithItems:@[@"Auto", @"1x", @"2x", @"3x", @"4x"]];
-    _resolutionControl.accessibilityLabel = @"Rendering Resolution";
-    [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
-    [_resolutionControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
-    [stack addArrangedSubview:_resolutionControl];
-    _resolutionStatusLabel = [self label:@"Auto chooses a whole-number scale up to 4× for this screen."];
-    _resolutionStatusLabel.font = [UIFont systemFontOfSize:14.0];
-    _resolutionStatusLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1.0];
-    _resolutionStatusLabel.numberOfLines = 3;
-    [stack addArrangedSubview:_resolutionStatusLabel];
+        // Resolution.
+        [stack addArrangedSubview:[self label:@"Resolution"]];
+        _resolutionControl = [[UISegmentedControl alloc]
+            initWithItems:@[@"Auto", @"1x", @"2x", @"3x", @"4x"]];
+        _resolutionControl.accessibilityLabel = @"Rendering Resolution";
+        [_resolutionControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
+        [_resolutionControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
+        [stack addArrangedSubview:_resolutionControl];
+        _resolutionStatusLabel = [self label:@"Auto chooses a whole-number scale up to 4× for this screen."];
+        _resolutionStatusLabel.font = [UIFont systemFontOfSize:14.0];
+        _resolutionStatusLabel.textColor = [UIColor colorWithWhite:0.72 alpha:1.0];
+        _resolutionStatusLabel.numberOfLines = 3;
+        [stack addArrangedSubview:_resolutionStatusLabel];
 
-    // Aspect ratio.
-    [stack addArrangedSubview:[self label:@"Aspect Ratio"]];
-    _aspectControl = [[UISegmentedControl alloc] initWithItems:@[@"Original (4:3)", @"Fill Screen"]];
-    _aspectControl.accessibilityLabel = @"Aspect Ratio";
-    [_aspectControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
-    [_aspectControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
-    [stack addArrangedSubview:_aspectControl];
+        // Aspect ratio.
+        [stack addArrangedSubview:[self label:@"Aspect Ratio"]];
+        _aspectControl = [[UISegmentedControl alloc] initWithItems:@[@"Original (4:3)", @"Fill Screen"]];
+        _aspectControl.accessibilityLabel = @"Aspect Ratio";
+        [_aspectControl addTarget:self action:@selector(graphicsChanged:) forControlEvents:UIControlEventValueChanged];
+        [_aspectControl.heightAnchor constraintGreaterThanOrEqualToConstant:40.0].active = YES;
+        [stack addArrangedSubview:_aspectControl];
 
+    }
+
+#ifdef PAPERPAD_APP
+    if (self.touchSettingsOnly) {
+#endif
     // Touch controls.
     UIStackView* touchControlsRow = [[UIStackView alloc] init];
     touchControlsRow.axis = UILayoutConstraintAxisHorizontal;
@@ -1200,6 +1236,10 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
                   forControlEvents:UIControlEventValueChanged];
     [_touchOpacitySlider.heightAnchor constraintGreaterThanOrEqualToConstant:44.0].active = YES;
     [stack addArrangedSubview:_touchOpacitySlider];
+
+#ifdef PAPERPAD_APP
+    }
+#endif
 
 #ifndef PAPERPAD_APP
     // Actions.
@@ -1254,7 +1294,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [self refreshFromDefaults];
     [self refreshResolutionStatus];
     [_resolutionTimer invalidate];
-    _resolutionTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+    if (_resolutionControl) _resolutionTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
                                                        target:self
                                                      selector:@selector(refreshResolutionStatus)
                                                      userInfo:nil
@@ -1281,7 +1321,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
             scaleMilli / 1000.0, width, height];
     } else {
         _resolutionStatusLabel.text = automatic
-            ? @"Auto chooses the largest whole-number scale that fits this screen and may exceed 4x. Waiting for the renderer…"
+            ? @"Auto chooses the largest whole-number scale that fits this screen, up to 4x. Waiting for the renderer…"
             : @"Waiting for renderer confirmation…";
     }
     _resolutionStatusLabel.accessibilityLabel = _resolutionStatusLabel.text;
@@ -1333,14 +1373,15 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 }
 
 - (void)persist {
-    NSDictionary* saved = @{
-        @"schemaVersion": @4,
-        @"volume": @(_volumeSlider.value / 100.0),
-        @"resolution": @(_resolutionControl.selectedSegmentIndex),
-        @"aspect": @(_aspectControl.selectedSegmentIndex),
-        @"touchControls": @(_touchControlsSwitch.isOn),
-        @"touchOpacity": @(_touchOpacitySlider.value / 100.0),
-    };
+    // Each sheet owns only its visible fields; retain the other sheet's values.
+    NSDictionary* existing = [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()];
+    NSMutableDictionary* saved = existing ? [[existing mutableCopy] autorelease] : [NSMutableDictionary dictionary];
+    saved[@"schemaVersion"] = @4;
+    if (_volumeSlider) saved[@"volume"] = @(_volumeSlider.value / 100.0);
+    if (_resolutionControl) saved[@"resolution"] = @(_resolutionControl.selectedSegmentIndex);
+    if (_aspectControl) saved[@"aspect"] = @(_aspectControl.selectedSegmentIndex);
+    if (_touchControlsSwitch) saved[@"touchControls"] = @(_touchControlsSwitch.isOn);
+    if (_touchOpacitySlider) saved[@"touchOpacity"] = @(_touchOpacitySlider.value / 100.0);
     [NSUserDefaults.standardUserDefaults setObject:saved forKey:settingsDefaultsKey()];
 }
 
