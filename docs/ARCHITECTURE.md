@@ -33,10 +33,10 @@ On Apple platforms, PaperPad gives RT64 an explicit data directory at `Applicati
 ## Pinned game/runtime stack
 
 - `ref/papermario` provides the US 1.0 decompilation build, exact ROM validation, and ELF metadata used for AOT generation.
-- `ref/paper-mario-recut` provides the game-specific N64Recomp integration and vendors N64ModernRuntime, N64Recomp, and RT64.
+- `vendor/paper-mario-recut` provides the game-specific N64Recomp integration and vendors N64ModernRuntime, N64Recomp, and RT64.
 - N64ModernRuntime supplies N64-shaped memory, scheduler, audio, input, save/flash, and overlay services.
 - RT64 supplies the renderer and direct Metal RHI.
-- `ref/mupen64plus-rsp-hle` supplies the HLE NAUDIO path used instead of the broken recompiled Paper Mario audio microcode.
+- `ref/mupen64plus-rsp-hle` supplies the HLE NAUDIO compatibility fallback; current PaperPad prefers its exact statically recompiled audio microcode.
 - `ref/SDL2` supplies window/input/controller/audio integration; `ref/zstd` supplies the compression build input needed by the vendor tree.
 
 Exact commits live in `dependencies.lock.json` and [DEPENDENCIES.md](DEPENDENCIES.md).
@@ -51,7 +51,7 @@ All game code used by the app is ahead-of-time compiled for arm64. The Apple tar
 - `src/paperpad_main.cpp`: runtime startup, SDL event pump, keyboard/controller mappings, controller reconciliation, touch snapshot merge, graphics settings, and shutdown.
 - `src/controller_slots.cpp`: backend-neutral instance-ID and player-slot ownership used by the SDL2 adapter and deterministic reconnect tests.
 - `src/paper_rt64_context.cpp`: RT64 configuration, Metal rendering bridge, framebuffer/present cadence, and diagnostics.
-- `patches/`: maintained changes to the exact fetched vendor source.
+- `patches/`: historical records mapped to maintained source commits; no normal build replays them.
 - `scripts/`: pinned fetch, toolchain/decomp generation, app builds, and source-safety checks.
 
 ## Input paths

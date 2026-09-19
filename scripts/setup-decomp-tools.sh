@@ -5,7 +5,7 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source "$script_dir/lib/common.sh"
 
 decomp="$PAPERPAD_REF/papermario"
-[[ -d "$decomp/.git" ]] || die "papermario checkout missing at $decomp"
+[[ -f "$decomp/configure" ]] || die "papermario checkout missing at $decomp"
 
 decomp_python=${PAPERPAD_PYTHON:-}
 if [[ -z "$decomp_python" && -x /opt/homebrew/bin/python3.11 ]]; then

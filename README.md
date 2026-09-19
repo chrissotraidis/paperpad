@@ -15,11 +15,11 @@
   <img alt="ROM not included" src="https://img.shields.io/badge/game%20data-not%20included-FF453A">
 </p>
 
-PaperPad combines the [pmret Paper Mario decompilation](https://github.com/pmret/papermario) with the statically recompiled runtime and renderer maintained by [Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut). It adds a native Apple application shell, Metal presentation, keyboard and controller input, customizable touch controls, native settings, and private first-run ROM import.
+PaperPad combines the [pmret Paper Mario decompilation](https://github.com/pmret/papermario) with the statically recompiled runtime and renderer from [Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut), pinned through [PaperPad’s maintained source branch](https://github.com/chrissotraidis/Paper-Mario-ReCut/tree/codex/paperpad-preview2-source). It adds a native Apple application shell, Metal presentation, keyboard and controller input, customizable touch controls, native settings, and private first-run ROM import.
 
 PaperPad is a game-specific static recompile, not a general Nintendo 64 emulator. It currently supports only an unmodified **Paper Mario (US) 1.0** ROM supplied by the user.
 
-This repository contains integration source, patches, scripts, and documentation. It does **not** contain Paper Mario, a ROM, extracted Nintendo assets, generated playable game code, saves, or a playable ROM-derived archive. Read the [rights and licensing boundary](RIGHTS_AND_LICENSES.md) before redistributing source or a build.
+This repository contains integration source, pinned maintained dependencies, scripts, and documentation. It does **not** contain Paper Mario, a ROM, extracted Nintendo assets, generated playable game code, saves, or a playable ROM-derived archive. Read the [rights and licensing boundary](RIGHTS_AND_LICENSES.md) before redistributing source or a build.
 
 ## Project status
 
@@ -79,7 +79,7 @@ scripts/build-macos-app.sh --rom /absolute/path/to/your/paper-mario-rom
 open build-macos-release/PaperPad.app
 ```
 
-The first command installs Xcode's optional Metal compiler, and `TOOLCHAINS` selects the installed version explicitly for Xcode releases that do not select it automatically. The build then fetches pinned source, applies the maintained patches, validates the ROM, generates local AOT game code, builds PaperPad, and ad-hoc signs a ROM-free app. After the first successful generation, incremental builds can run without `--rom` in the same shell:
+The first command installs Xcode's optional Metal compiler, and `TOOLCHAINS` selects the installed version explicitly for Xcode releases that do not select it automatically. The build then fetches and verifies pinned maintained source, validates the ROM, generates local AOT game code, builds PaperPad, and ad-hoc signs a ROM-free app. After the first successful generation, incremental builds can run without `--rom` in the same shell:
 
 ```sh
 scripts/build-macos-app.sh
@@ -217,7 +217,9 @@ flowchart LR
     G --> H
 ```
 
-`dependencies.lock.json` records fetched source revisions and the supported ROM fingerprint. Reference checkouts live under ignored `ref/`; generated ROM-derived/AOT input lives under ignored `generated/`. Fetch scripts disable upstream push URLs, and maintained patches replay through `scripts/apply-patches.sh`.
+`dependencies.lock.json` records exact source revisions and the supported ROM fingerprint. The [maintained ReCut fork](https://github.com/chrissotraidis/Paper-Mario-ReCut/tree/codex/paperpad-preview2-source) is pinned at `vendor/paper-mario-recut`; unmodified inputs remain under ignored `ref/`, and private ROM-derived/AOT input under ignored `generated/`. Normal builds verify clean sources and do not replay patches. See [source maintenance, source archives and rollback](docs/SOURCE_MAINTENANCE.md).
+
+The [PaperBoat audit and engine decision](docs/PAPERBOAT-AUDIT.md) selects PaperBoat as the foundation for a future major version. This source-maintenance change keeps the existing ReCut engine and Preview 2 behavior; no PaperBoat features or new binary release are included.
 
 Before publishing source, run:
 
@@ -273,7 +275,8 @@ No. Development testing covers the opening flow, early battles and progression, 
 | [`apple/app/`](apple/app/) | UIKit lifecycle, setup, settings, diagnostics, touch UI, privacy manifest, and app metadata |
 | [`src/`](src/) | Native runner, input, renderer bridge, runtime hooks, paths, and generated-code integration |
 | [`config/`](config/) | N64Recomp configuration |
-| [`patches/`](patches/) | Ordered fixes for pinned ReCut, N64ModernRuntime, N64Recomp, and RT64 source |
+| [`vendor/paper-mario-recut`](vendor/paper-mario-recut) | Pinned maintained ReCut/runtime/compiler/RT64 source |
+| [`patches/`](patches/) | Historical provenance only; mapped to maintained source commits |
 | [`scripts/`](scripts/) | Fetch, validate, generate, build, test-support, and repository-audit automation |
 | [`docs/`](docs/) | Architecture, building, status, testing, dependencies, issues, and release documentation |
 | `ref/` | Ignored pinned source and local reference inputs; never published |

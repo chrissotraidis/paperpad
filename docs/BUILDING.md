@@ -141,10 +141,10 @@ For controller acceptance, connect a supported controller during gameplay and ve
 ```sh
 scripts/clone-sources.sh
 scripts/verify-sources.sh
-scripts/apply-patches.sh
+scripts/verify-sources.sh
 ```
 
-`apply-patches.sh` is idempotent: each patch must either apply cleanly or already be present. The historical `patches/mstan-*` files document earlier provenance; the maintained applied series is under `patches/n64recomp/`, `patches/n64modernruntime/`, and `patches/rt64/`.
+`verify-sources.sh` rejects dirty or mismatched inputs and checks the prepared-source manifest. The whole `patches/` directory is now historical: normal builds consume the exact maintained gitlink. See [SOURCE_MAINTENANCE.md](SOURCE_MAINTENANCE.md) for source updates, archives and rollback.
 
 ## Release checks
 
@@ -161,7 +161,7 @@ Then follow [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md). A Simulator result doe
 
 - **Generated game sources are missing**: rerun the selected build with `--rom /absolute/path/...`.
 - **Unsupported ROM size or SHA-1**: confirm the game, region, revision, and that the dump is unmodified. Byte order is normalized automatically.
-- **Pinned checkout is modified**: inspect `ref/` changes. The fetch script intentionally refuses to change revisions over unknown edits. Maintained patches should be applied only through `scripts/apply-patches.sh`.
+- **Pinned checkout is modified**: inspect `ref/` changes. The fetch script intentionally refuses to change revisions over unknown edits. Make runtime/compiler/renderer changes as source commits in the maintained dependency, then update the gitlink, lock and verification evidence. Do not reset an edited source tree.
 - **Missing MIPS assembler**: run `scripts/build-mips-binutils.sh` or rerun the clean build; it creates a local ignored toolchain.
 - **Simulator shows stale code**: terminate the app, reinstall the exact new `.app`, then relaunch. Shut down unused devices.
 - **Crash**: after relaunching, use the first-level `Share Diagnostics & Logs…` action so the possible-unclean previous session is included. Review/redact the report and include exact reproduction steps. `scripts/capture-crashes.sh` remains useful for development-host crash reports.

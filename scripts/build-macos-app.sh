@@ -13,7 +13,7 @@ while (($#)); do
 done
 
 "$script_dir/clone-sources.sh"
-"$script_dir/apply-patches.sh"
+"$script_dir/verify-sources.sh"
 
 if [[ -n "$rom_path" ]]; then
     "$script_dir/setup-decomp-tools.sh"

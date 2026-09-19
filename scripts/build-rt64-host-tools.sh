@@ -9,7 +9,7 @@ require_command ninja
 
 "$script_dir/build-sdl2.sh"
 
-rt64="$PAPERPAD_REF/paper-mario-recut/lib/rt64"
+rt64="$PAPERPAD_ROOT/vendor/paper-mario-recut/lib/rt64"
 build_dir="$PAPERPAD_ROOT/build-rt64-host-tools"
 cmake -S "$rt64" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$build_dir" \

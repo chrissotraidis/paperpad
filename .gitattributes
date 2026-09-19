@@ -1,1 +1,3 @@
 *.patch -whitespace
+
+docs/source-maintenance/prepared-recut.json linguist-generated=true

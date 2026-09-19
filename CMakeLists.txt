@@ -31,6 +31,12 @@ endif()
 
 get_filename_component(PAPERPAD_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" ABSOLUTE)
 
+execute_process(COMMAND bash "${PAPERPAD_ROOT}/scripts/verify-sources.sh"
+    RESULT_VARIABLE PAPERPAD_SOURCE_CHECK)
+if(NOT PAPERPAD_SOURCE_CHECK EQUAL 0)
+    message(FATAL_ERROR "PaperPad source verification failed; preserve local changes and inspect the locked source graph.")
+endif()
+
 # Public release binaries must not retain the builder's personal checkout path
 # through __FILE__, debug metadata, or compiler diagnostics embedded in static
 # libraries. Keep paths reproducible without changing runtime behavior.
@@ -41,7 +47,7 @@ add_compile_options(
 
 set(PM_RECOMP_OUT "${PAPERPAD_ROOT}/generated/aot/paper_mario_recomp_out")
 set(PM_AUDIO_RSP_SOURCE "${PAPERPAD_ROOT}/generated/aot/rsp/n_aspMain.cpp")
-set(PAPERPAD_RECUT "${PAPERPAD_ROOT}/ref/paper-mario-recut")
+set(PAPERPAD_RECUT "${PAPERPAD_ROOT}/vendor/paper-mario-recut")
 set(PAPERPAD_RUNTIME "${PAPERPAD_RECUT}/lib/N64ModernRuntime")
 set(PAPERPAD_RENDERER "${PAPERPAD_RECUT}/lib/rt64")
 set(PAPERPAD_ZSTD_SOURCE_DIR "${PAPERPAD_ROOT}/ref/zstd" CACHE PATH "Complete zstd source tree")
@@ -105,6 +111,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
 endif()
 
 # ---- Runtime: N64ModernRuntime (mstan fork, static mobile profile) ---------
+set(MUPEN_RSP_HLE_DIR "${PAPERPAD_ROOT}/ref/mupen64plus-rsp-hle" CACHE PATH "Pinned RSP HLE source" FORCE)
 set(N64MODERN_NO_DYNAMIC_CODE ON CACHE BOOL "Compile out runtime code generation" FORCE)
 set(WITH_ARES_BRIDGE OFF CACHE BOOL "" FORCE)
 add_subdirectory("${PAPERPAD_RUNTIME}" "${CMAKE_BINARY_DIR}/runtime")
