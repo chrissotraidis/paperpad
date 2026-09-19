@@ -13,6 +13,8 @@
 
 namespace {
 
+NSDictionary* reporterAnswers=nil;
+
 constexpr NSUInteger kMaximumSharedLogBytes = 512u * 1024u;
 constexpr size_t kMaximumStoredLogBytes = 4u * 1024u * 1024u;
 
@@ -138,6 +140,18 @@ NSString* diagnosticReport(NSURL* root) {
     NSMutableString* report = [NSMutableString string];
     [report appendString:@"PaperPad diagnostics\n"];
     [report appendString:@"====================\n"];
+    [report appendString:@"Project: https://github.com/chrissotraidis/paperpad\n"];
+    [report appendString:@"issuesURL=https://github.com/chrissotraidis/paperpad/issues\n"];
+#ifdef PAPERPAD_APP
+    [report appendString:@"Engine: PaperBoat\nUpstream: https://github.com/HarbourMasters/PaperBoat\n"];
+#else
+    [report appendString:@"Engine: Original\nUpstream: https://github.com/SMCGames/Paper-Mario-ReCut\n"];
+#endif
+    if(reporterAnswers) [report appendFormat:@"Problem: %@\nContext: %@\n",reporterAnswers[@"problem"] ?: @"",reporterAnswers[@"context"] ?: @""];
+    NSURL* provenanceURL=[bundle URLForResource:@"BUILD_PROVENANCE" withExtension:@"json"];
+    NSData* provenanceData=provenanceURL ? [NSData dataWithContentsOfURL:provenanceURL] : nil;
+    NSDictionary* provenance=provenanceData ? [NSJSONSerialization JSONObjectWithData:provenanceData options:0 error:nil] : nil;
+    if([provenance[@"applicationCommit"] isKindOfClass:NSString.class]) [report appendFormat:@"Source commit: %@\n",provenance[@"applicationCommit"]];
     [report appendFormat:@"Generated: %@\n", NSDate.date];
     [report appendFormat:@"App version: %@ (%@)\n",
         [bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] ?: @"unknown",
@@ -344,4 +358,48 @@ void paperpad_present_diagnostics_share(void* presenter_pointer,
         [share release];
 #endif
     });
+}
+
+void paperpad_present_problem_report(void* presenter_pointer, void (^completion)(void)) {
+    UIViewController* presenter=(__bridge UIViewController*)presenter_pointer;
+    if (!presenter) { if(completion)completion();return; }
+    UIAlertController* prompt=[UIAlertController alertControllerWithTitle:@"Report a Problem"
+        message:@"Describe the issue, then share diagnostics or open a GitHub draft. Nothing is posted automatically. Attach the diagnostics file to your issue."
+        preferredStyle:UIAlertControllerStyleAlert];
+    [prompt addTextFieldWithConfigurationHandler:^(UITextField* field){field.placeholder=@"What went wrong?";}];
+    [prompt addTextFieldWithConfigurationHandler:^(UITextField* field){field.placeholder=@"Area and what you were doing";}];
+    [prompt addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:^(__unused UIAlertAction* action){if(completion)completion();}]];
+    void (^captureAnswers)(void)=^{
+        NSString* problem=prompt.textFields[0].text ?: @"";
+        NSString* context=prompt.textFields[1].text ?: @"";
+#if !__has_feature(objc_arc)
+        [reporterAnswers release];
+#endif
+        reporterAnswers=[@{@"problem":[problem substringToIndex:MIN(problem.length,1000)], @"context":[context substringToIndex:MIN(context.length,1000)]} copy];
+    };
+    [prompt addAction:[UIAlertAction actionWithTitle:@"Share Diagnostics…" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction* action){
+        captureAnswers();
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.35*NSEC_PER_SEC)),dispatch_get_main_queue(),^{paperpad_present_diagnostics_share(presenter_pointer,completion);});
+    }]];
+    [prompt addAction:[UIAlertAction actionWithTitle:@"Report on GitHub" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction* action){
+        captureAnswers();
+        NSURLComponents* url=[NSURLComponents componentsWithString:@"https://github.com/chrissotraidis/paperpad/issues/new"];
+        NSString* problem=prompt.textFields[0].text ?: @"";
+        NSString* context=prompt.textFields[1].text ?: @"";
+        NSString* body=[NSString stringWithFormat:@"## Problem\n%@\n\n## Where / steps\n%@\n\nApp: %@ (%@)\niPadOS/iOS: %@\n\nAttach the file from PaperPad → Support → Share Diagnostics & Logs.\nProject: https://github.com/chrissotraidis/paperpad\n",
+            problem,context,[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],
+            [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"],UIDevice.currentDevice.systemVersion];
+        url.queryItems=@[[NSURLQueryItem queryItemWithName:@"title" value:problem],[NSURLQueryItem queryItemWithName:@"body" value:body]];
+        [UIApplication.sharedApplication openURL:url.URL options:@{} completionHandler:^(BOOL opened){
+            dispatch_async(dispatch_get_main_queue(),^{
+                if(completion)completion();
+                if(!opened){
+                    UIAlertController* alert=[UIAlertController alertControllerWithTitle:@"Could Not Open GitHub" message:@"Visit github.com/chrissotraidis/paperpad/issues and attach your diagnostics file." preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                    [presenter presentViewController:alert animated:YES completion:nil];
+                }
+            });
+        }];
+    }]];
+    [presenter presentViewController:prompt animated:YES completion:nil];
 }

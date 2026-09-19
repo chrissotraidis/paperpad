@@ -52,3 +52,10 @@ built-in texture replacements. PaperPad's `src/builtin_texture_pack.cpp` is a
 no-op, and its target does not package or enable that upstream texture pack.
 Preserving upstream source history does not establish rights in those assets;
 do not add them to a PaperPad package or treat the fork relationship as clearance.
+
+
+## PaperBoat candidate qualification
+
+The new PaperPad target does **not** link Original's ReCut, N64ModernRuntime or RT64. The Original-specific GPL/generated-private-source issue above must not be automatically attributed to this different executable. PaperBoat's pinned root notice is CC0, libultraship and Torch carry MIT notices, and nested components retain their own terms in the packaged license collection.
+
+The narrower unresolved question is the scope of the rights in compiled game-derived code inherited through PaperBoat's decompilation/DX sources. [CC0](https://creativecommons.org/publicdomain/zero/1.0/legalcode.en) grants or waives only rights held by its affirmer; it does not clear third-party rights. This work records those notices without inventing a Nintendo rights grant. A complete restored/offline source-delivery rehearsal for the Boat graph also remains pending. The 0.2.0 candidate can be built, reviewed and staged as a private draft; this checkpoint does not declare its public binary distribution qualified.

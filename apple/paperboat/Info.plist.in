@@ -2,37 +2,41 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+    <key>CFBundleIconFile</key>
+    <string>Icon</string>
     <key>CFBundleURLTypes</key>
     <array><dict>
-        <key>CFBundleURLName</key><string>paperpad-original</string>
-        <key>CFBundleURLSchemes</key><array><string>paperpad-original</string></array>
+        <key>CFBundleURLName</key><string>paperpad-boat</string>
+        <key>CFBundleURLSchemes</key><array><string>paperpad-boat</string></array>
     </dict></array>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
     <string>PaperPad</string>
     <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
+    <string>@EXECUTABLE_NAME@</string>
     <key>CFBundleIdentifier</key>
-    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <string>com.chrissotraidis.paperpad.boat</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>$(PRODUCT_NAME)</string>
+    <string>PaperPad</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>@PAPERPAD_VERSION@</string>
+    <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>@PAPERPAD_BUILD_NUMBER@</string>
+    <string>6</string>
     <key>PaperPadBuildProfile</key>
-    <string>@PAPERPAD_BUILD_PROFILE@</string>
+    <string>PaperBoat development</string>
     <key>GCSupportedGameControllers</key>
     <array><dict><key>ProfileName</key><string>ExtendedGamepad</string></dict></array>
     <key>GCSupportsControllerUserInteraction</key>
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
+    <key>MinimumOSVersion</key>
+    <string>16.3</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIApplicationSupportsIndirectInputEvents</key>
@@ -43,6 +47,8 @@
     <dict/>
     <key>UIRequiredDeviceCapabilities</key>
     <array><string>arm64</string><string>metal</string></array>
+    <key>UIDeviceFamily</key>
+    <array><integer>1</integer><integer>2</integer></array>
     <key>UIRequiresFullScreen</key>
     <true/>
     <key>UIStatusBarHidden</key>

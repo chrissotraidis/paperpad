@@ -8,7 +8,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: true
+          submodules: recursive
           fetch-depth: 0
       - name: Verify pinned maintained sources
         run: scripts/clone-sources.sh
@@ -18,3 +18,8 @@ jobs:
         run: |
           c++ -std=c++20 -Isrc tests/controller_slots_test.cpp src/controller_slots.cpp -o /tmp/paperpad-controller-test
           /tmp/paperpad-controller-test
+      - name: Verify PaperBoat pins and shared input mapping
+        run: |
+          python3 scripts/verify-paperboat.py
+          c++ -std=c++20 -Iapple/paperboat -Iref/SDL2/include tests/paperboat_input_test.cpp -o /tmp/paperpad-boat-input-test
+          /tmp/paperpad-boat-input-test

@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "upstreamBase": "2f7d38e07bcb85c216bf37e8a0a1a5cf8731ceef",
+  "sources": {
+    "vendor/paperboat": {
+      "url": "https://github.com/chrissotraidis/PaperBoat.git",
+      "commit": "dc943cc5f91383a13906a71bf71ecc5b32f957df"
+    },
+    "vendor/paperboat/external/libultraship": {
+      "url": "https://github.com/chrissotraidis/libultraship.git",
+      "commit": "89801b5e674af087f35ea3a4abddd0f8c61e59d4"
+    },
+    "vendor/paperboat/external/torch": {
+      "url": "https://github.com/JeodC/Torch-LH.git",
+      "commit": "106f4e3056f07fe3a8758bb14a060f8423b6877f"
+    }
+  },
+  "buildDependencies": {
+    "dr_libs": {
+      "url": "https://github.com/mackron/dr_libs.git",
+      "commit": "da35f9d6c7374a95353fd1df1d394d44ab66cf01"
+    },
+    "imgui": {
+      "url": "https://github.com/ocornut/imgui.git",
+      "commit": "4806a1924ff6181180bf5e4b8b79ab4394118875",
+      "preparedFiles": {
+        "backends/imgui_impl_metal.mm": {
+          "sha256": "fc14f6cb9791eae47bc30d91a65affa168fe90572cc849d2def0ef335f8dba30",
+          "mode": 420
+        },
+        "backends/imgui_impl_sdl2.cpp": {
+          "sha256": "62bb99e485d9852244ad8f0b36c567b7f655c11d4fa78610a7fdc329eb31b9ae",
+          "mode": 420
+        },
+        "docs/CHANGELOG.txt": {
+          "sha256": "ad94c9e49589d0f360140552c1180ef79e117fa7d5125315040e5fdfe1b32d21",
+          "mode": 420
+        },
+        "imconfig.h": {
+          "sha256": "f8def8cc3e96c9dcc966fbebdc05eacb334690a0604edfdf6bb09d13a4a12ef5",
+          "mode": 420
+        }
+      },
+      "preparationOwner": "Pinned upstream CMake package preparation, including libultraship ImGui patch and zlib generated-header relocation; verified after configure."
+    },
+    "iostoolchain": {
+      "url": "https://github.com/leetal/ios-cmake",
+      "commit": "06465b27698424cf4a04a5ca4904d50a3c966c45"
+    },
+    "libzip": {
+      "url": "https://github.com/nih-at/libzip.git",
+      "commit": "6f8a0cdd24a0dc6cce9dac4a7679da784ab124ea"
+    },
+    "metalcpp": {
+      "url": "https://github.com/briaguya-ai/single-header-metal-cpp.git",
+      "commit": "7bf710a725b386f6db869f8a2b48a56be29b6233"
+    },
+    "monocypher": {
+      "url": "https://github.com/LoupVaillant/Monocypher.git",
+      "commit": "0d85f98c9d9b0227e42cf795cb527dff372b40a4"
+    },
+    "nlohmann_json": {
+      "url": "https://github.com/nlohmann/json.git",
+      "commit": "55f93686c01528224f448c19128836e7df245f72"
+    },
+    "prism": {
+      "url": "https://github.com/KiritoDv/prism-processor.git",
+      "commit": "aa8370981b2cf57c46172e6aa639d720137f9a92"
+    },
+    "sdl2": {
+      "url": "https://github.com/libsdl-org/SDL.git",
+      "commit": "5d249570393f7a37e037abf22cd6012a4cc56a71"
+    },
+    "spdlog": {
+      "url": "https://github.com/gabime/spdlog.git",
+      "commit": "486b55554f11c9cccc913e11a87085b2a91f706f"
+    },
+    "threadpool": {
+      "url": "https://github.com/bshoshany/thread-pool.git",
+      "commit": "097aa718f25d44315cadb80b407144ad455ee4f9"
+    },
+    "tinyxml2": {
+      "url": "https://github.com/leethomason/tinyxml2.git",
+      "commit": "9148bdf719e997d1f474be6bcc7943881046dba1"
+    },
+    "yaml-cpp": {
+      "url": "https://github.com/jbeder/yaml-cpp.git",
+      "commit": "56e3bb550c91fd7005566f19c079cb7a503223cf"
+    },
+    "zlib": {
+      "url": "https://github.com/madler/zlib.git",
+      "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+      "preparedFiles": {
+        "zconf.h": {
+          "absent": true
+        }
+      },
+      "preparationOwner": "Pinned upstream CMake package preparation, including libultraship ImGui patch and zlib generated-header relocation; verified after configure."
+    }
+  },
+  "fetchedFiles": {
+    "_deps/sse2neon/sse2neon.h": "0624a1270fc88a67e6b886cd0e33e322d93de4b3a760b3373dc3a66e713bd43f",
+    "gamecontrollerdb.txt": "07ec5b753e685c4829987919b27905cc3c45c8e18c11b3046e275fcf38b0f3cb"
+  }
+}

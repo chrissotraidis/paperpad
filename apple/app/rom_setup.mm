@@ -322,6 +322,13 @@ didPickDocumentsAtURLs:(NSArray<NSURL*>*)urls {
         }
         [files removeItemAtURL:runtimeCopy error:nil];
         [files removeItemAtURL:config error:nil];
+#ifdef PAPERPAD_APP
+        NSURL* archive = [root URLByAppendingPathComponent:@"pm64.o2r"];
+        if ([files fileExistsAtPath:archive.path] && ![files removeItemAtURL:archive error:&error]) {
+            [self showMessage:@"Could Not Remove Extracted Data" body:error.localizedDescription];
+            return;
+        }
+#endif
     }
     [self showMessage:@"ROM Removed"
                  body:@"The private ROM copy was removed. The current session can finish; PaperPad will ask for a ROM the next time it launches."];
