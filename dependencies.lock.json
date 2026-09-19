@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "updated": "2026-08-05",
+  "updated": "2026-09-19",
   "notes": [
-    "Paper Mario decomp and ReCut are exact upstream pins cloned into gitignored ref/.",
-    "N64ModernRuntime and RT64 are vendored inside the ReCut checkout at its pin.",
-    "Source checkouts are local build inputs; redistribution remains subject to RIGHTS_AND_LICENSES.md."
+    "ReCut is maintained as ordinary source in an upstream-connected fork, pinned by vendor/paper-mario-recut.",
+    "The source commit preserves all 11,219 prepared Preview 2 files and modes. No game/runtime/renderer version upgrade.",
+    "Private ROM and generated game inputs remain outside the source graph. See docs/SOURCE_MAINTENANCE.md."
   ],
   "sources": {
     "papermario": {
@@ -13,9 +13,13 @@
       "provenance": "pmret decomp main"
     },
     "paperMarioReCut": {
-      "url": "https://github.com/SMCGames/Paper-Mario-ReCut.git",
-      "commit": "098be0a501eecd5bb894a47964061d05eeedc3a2",
-      "provenance": "SMCGames ReCut main; vendors N64ModernRuntime + rt64"
+      "url": "https://github.com/chrissotraidis/Paper-Mario-ReCut.git",
+      "commit": "43f61ea373e02372ca9e0330beccf97ec4c72e44",
+      "provenance": "Prepared Preview 2 source, unchanged upstream base; see docs/source-maintenance/patch-map.json",
+      "upstreamUrl": "https://github.com/SMCGames/Paper-Mario-ReCut.git",
+      "upstreamCommit": "098be0a501eecd5bb894a47964061d05eeedc3a2",
+      "branch": "codex/paperpad-preview2-source",
+      "path": "vendor/paper-mario-recut"
     },
     "mupen64plusRspHle": {
       "url": "https://github.com/mupen64plus/mupen64plus-rsp-hle.git",

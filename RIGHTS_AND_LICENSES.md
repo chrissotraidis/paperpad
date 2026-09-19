@@ -21,3 +21,34 @@ PaperPad's integration source, scripts, documentation, and original artwork do n
 The `v0.1.0-preview.1` binary workflow proves that the unsigned IPA excludes ROMs, extracted assets, generated AOT source, saves, credentials, signing material, personal paths, and private device data. The package includes PaperPad's notices and the license/rights files collected for the exact shipped dependency revisions. The matching release tag identifies its source snapshot.
 
 Preview 1 is a ROM-free, unsigned public package for users to sign with their own Apple credentials. It is not a maintainer-signed, notarized, TestFlight, or App Store release. Use [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) before publishing another source or binary release.
+
+## Source-maintenance qualification (2026-09-19)
+
+The maintained ReCut fork preserves the existing component licenses and upstream
+history. It does not relicense the app or game. Normal builds consume an exact
+source gitlink instead of applying local patches; [source delivery and
+rollback](docs/SOURCE_MAINTENANCE.md) describe the explicit dependency archive.
+The automatic application source ZIP alone does not include that submodule.
+
+The linked N64ModernRuntime carries GPLv3, and the compiled Mupen RSP HLE files
+(`alist.c`, `alist_naudio.c`, `audio.c`, `memory.c`) carry GPL-2.0-or-later
+headers. The previous dependency inventory's BSD-style description of HLE was
+incorrect. The existing bundled HLE notice already identified GPL-2.0-or-later;
+it is preserved. Runtime/game-source delivery must be assessed against the
+actual linked executable and the [GPL corresponding-source requirements](https://www.gnu.org/licenses/gpl.en.html),
+not merely whether the IPA omits the ROM.
+
+Unresolved release qualification is specific: the current binary includes
+private ROM-derived game code while this repository excludes that generated
+source; the scope and permitted delivery of all source needed to rebuild the
+combined executable have not been reconciled here. The app also has no root
+blanket license grant; this task does not invent one. These questions require
+resolution before calling a new binary/source distribution fully qualified.
+The local engineering source archive is not asserted to be complete legal
+Corresponding Source. No new binary release is part of this task.
+
+ReCut's upstream `COMPLIANCE.md` also retains a provenance question for its
+built-in texture replacements. PaperPad's `src/builtin_texture_pack.cpp` is a
+no-op, and its target does not package or enable that upstream texture pack.
+Preserving upstream source history does not establish rights in those assets;
+do not add them to a PaperPad package or treat the fork relationship as clearance.

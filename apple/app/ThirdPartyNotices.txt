@@ -11,7 +11,9 @@ Runtime source components
 
 Paper-Mario-ReCut
   Source: https://github.com/SMCGames/Paper-Mario-ReCut
-  License: MIT (see the project's LICENSE/COMPLIANCE documents)
+  Maintained PaperPad source: https://github.com/chrissotraidis/Paper-Mario-ReCut
+  Selected revision: see BUILD_PROVENANCE.json / dependencies.lock.json
+  License: MIT for original ReCut code; nested components retain their terms
 
 papermario (pmret decomp)
   Source: https://github.com/pmret/papermario
@@ -49,9 +51,10 @@ this app. PaperPad's dependency lock records those source revisions.
 Source offer and license text
 -----------------------------
 
-The corresponding PaperPad source, exact dependency revisions, maintained patch
-series, build instructions, and complete upstream license files must accompany
-any conveyed build. GPL license text is available at
+The exact PaperPad dependency revisions, maintained source commits, build
+instructions and upstream license files are described in SOURCE_MAINTENANCE.md.
+Complete corresponding-source and game-source distribution qualification remains
+open; see RIGHTS_AND_LICENSES.md. A source manifest alone is not clearance. GPL license text is available at
 https://www.gnu.org/licenses/gpl-3.0.txt and in the pinned GPL source trees.
 
 No warranty

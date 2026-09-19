@@ -7,7 +7,7 @@ source "$script_dir/lib/common.sh"
 require_command cmake
 require_command ninja
 
-recut="$PAPERPAD_REF/paper-mario-recut"
+recut="$PAPERPAD_ROOT/vendor/paper-mario-recut"
 n64recomp="$recut/lib/N64ModernRuntime/N64Recomp"
 build_dir="$PAPERPAD_ROOT/build-host-tools"
 

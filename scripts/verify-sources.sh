@@ -1,32 +1,29 @@
 #!/usr/bin/env bash
-# Verify pinned reference checkouts and their submodules.
 set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source "$script_dir/lib/common.sh"
 
+# An exported source tree already contains every locked dependency; do not fetch.
+if [[ -f "$PAPERPAD_ROOT/SOURCE_MANIFEST.json" ]]; then
+    python3 "$script_dir/source-archive.py" --verify "$PAPERPAD_ROOT"
+    python3 "$script_dir/verify-prepared-source.py"
+    exit 0
+fi
 require_command git
 require_command jq
-
-assert_revision "$PAPERPAD_REF/papermario" "$(lock_value papermario commit)" "papermario decomp"
-assert_revision "$PAPERPAD_REF/paper-mario-recut" "$(lock_value paperMarioReCut commit)" "Paper-Mario-ReCut"
-assert_revision "$PAPERPAD_REF/mupen64plus-rsp-hle" "$(lock_value mupen64plusRspHle commit)" "mupen64plus-rsp-hle"
-assert_revision "$PAPERPAD_REF/SDL2" "$(lock_value sdl2 commit)" "SDL2"
-assert_revision "$PAPERPAD_REF/zstd" "$(lock_value zstd commit)" "zstd"
-
-# N64Recomp submodules used by host-tool and runtime builds.
-for sub in lib/rabbitizer lib/ELFIO lib/fmt lib/tomlplusplus lib/sljit; do
-    if [[ ! -d "$PAPERPAD_REF/paper-mario-recut/lib/N64ModernRuntime/N64Recomp/$sub" ]]; then
-        die "missing N64Recomp submodule $sub; run scripts/init-submodules.sh"
-    fi
+for key in papermario paperMarioReCut mupen64plusRspHle sdl2 zstd; do
+    case "$key" in
+        paperMarioReCut) checkout="$PAPERPAD_ROOT/vendor/paper-mario-recut" ;;
+        mupen64plusRspHle) checkout="$PAPERPAD_REF/mupen64plus-rsp-hle" ;;
+        sdl2) checkout="$PAPERPAD_REF/SDL2" ;;
+        *) checkout="$PAPERPAD_REF/$key" ;;
+    esac
+    assert_revision "$checkout" "$(lock_value "$key" commit)" "$key"
+    [[ -z "$(git -C "$checkout" status --porcelain --untracked-files=all)" ]] ||
+        die "$key source is dirty: $checkout"
 done
-
-for checkout in "$PAPERPAD_REF/papermario" "$PAPERPAD_REF/paper-mario-recut"; do
-    if git -C "$checkout" status --porcelain | rg -q .; then
-        # Patched upstream inputs are allowed for ReCut; the decomp must stay clean.
-        if [[ "$checkout" == *papermario ]] && git -C "$checkout" diff --quiet; then
-            :
-        fi
-    fi
-done
-
-note "Pinned sources verified."
+expected=$(lock_value paperMarioReCut commit)
+gitlink=$(git -C "$PAPERPAD_ROOT" ls-files --stage vendor/paper-mario-recut | awk '{print $2}')
+[[ "$gitlink" == "$expected" ]] || die "ReCut gitlink and dependency lock disagree"
+python3 "$script_dir/verify-prepared-source.py"
+note "Pinned clean sources and prepared-source identity verified."

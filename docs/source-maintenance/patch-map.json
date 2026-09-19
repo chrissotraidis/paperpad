@@ -1,0 +1,133 @@
+{
+  "base": "098be0a501eecd5bb894a47964061d05eeedc3a2",
+  "sourceCommit": "40351e667c599ef7bdf18841d5fd2213d1252307",
+  "preparedFiles": 11219,
+  "patches": [
+    {
+      "patch": "patches/n64recomp/fmt-consteval-guard.patch",
+      "sha256": "c0a02be2b9af82be02b7051467af4cfe7bf6df4743e972095c504e89ce6c2a52",
+      "commit": "da2eac7adb881d4547307f33cf06a7ce84008d60"
+    },
+    {
+      "patch": "patches/n64modernruntime/apple-clean-process-exit.patch",
+      "sha256": "74bb3fe76beec6953ef033703453f0d2de087de7d0be66486c29436b4a6568bc",
+      "commit": "411313cba71fcba22366293366c7d95b98b3c4d7"
+    },
+    {
+      "patch": "patches/n64modernruntime/no-dynamic-code.patch",
+      "sha256": "ac580c0c7cacd287285608634165aedb99ef35845038ca330f1731095532a775",
+      "commit": "b36873ad124a116d951ca122bd6f0385c72860b1"
+    },
+    {
+      "patch": "patches/n64modernruntime/official-ai-queue-feedback.patch",
+      "sha256": "965226827045d68d849caee2f45329de600d8238bf348dabd6c609b12a27b8cf",
+      "commit": "f8a205ab85d668591de1a6ff1a96ed43f9d75ac4"
+    },
+    {
+      "patch": "patches/n64modernruntime/paper-mario-audio-headroom.patch",
+      "sha256": "fce5e68069898d0122b26854a399bd146e226e301cbb0590ad31994bde0fc3d0",
+      "commit": "98a58fbba1ea99ab936548f661169c847da95e9e"
+    },
+    {
+      "patch": "patches/n64modernruntime/prefer-recompiled-audio-rsp.patch",
+      "sha256": "3dae8baa4354532b09a3bc897ae07647d6df0f0d1cac8b0c173c9f119e6c0fd0",
+      "commit": "8f5806c412531f9f8aa6a7020060878ff3c968eb"
+    },
+    {
+      "patch": "patches/n64modernruntime/synchronous-audio-tasks.patch",
+      "sha256": "624ee33f4b14dd4dfb62001e0a36e27257a3d2eb5ecda81de0872c48ce712805",
+      "commit": "74e0d1e0e2ccb26e36ec6dda426e9b69f20104c5"
+    },
+    {
+      "patch": "patches/rt64/external-host-tools.patch",
+      "sha256": "51d653cab2b234f845672336aaf1022093f32862611d38ffef50fd7c3c59360a",
+      "commit": "515fefc975f14c785325722b934bcfc9bf697f06"
+    },
+    {
+      "patch": "patches/rt64/external-zstd-source.patch",
+      "sha256": "7cac97e2a12bf16812d1bf7381456d5627a32d4b9119507cc7be079d729602cb",
+      "commit": "ed233f9fc332f91a105ee05082bcc4e6b3cfb572"
+    },
+    {
+      "patch": "patches/rt64/hlslpp-scalar-labs.patch",
+      "sha256": "635630d6a371806e0a8048555f45f8980efa9ba549336caa8222c89f998b9cac",
+      "commit": "6508a8216d49a5347cd4a7845c03dbac4a68c3f3"
+    },
+    {
+      "patch": "patches/rt64/ios-expand-visible-area.patch",
+      "sha256": "5432ab69f615de27213b368c1cabf2aeedae67b36e16c9886537f311072a890b",
+      "commit": "0bd6d0b3bbf295c5c1b57674a94c24aa932f382f"
+    },
+    {
+      "patch": "patches/rt64/ios-metal-debug-pipeline.patch",
+      "sha256": "3f61ffff822f4a51c5ad542fb42605278940d8b107b306f95f96ca3cc770ce0c",
+      "commit": "c98a1883937e69767bed69a2f89f923dacf37fa2"
+    },
+    {
+      "patch": "patches/rt64/ios-metal-device.patch",
+      "sha256": "1a6d72a9baea90875ba31ab873b5da1b5390bcca9d0378f87c6f14490cc280bb",
+      "commit": "d86a05cdb47696c5d3748ba1c39ff440fc87e8c3"
+    },
+    {
+      "patch": "patches/rt64/ios-metal-main-thread.patch",
+      "sha256": "c42273b82c947d5354c9ad5c0af694b638003776cd291e8952cad8a3b5b59fd0",
+      "commit": "c2e7fef281e1bcd39d5796ee09328f46d1ac4b74"
+    },
+    {
+      "patch": "patches/rt64/ios-metal-resource-limits.patch",
+      "sha256": "13af25d43f3f40cbca3e818e71010f274dc6aab29282f8f78ae4f384c501d4c4",
+      "commit": "67373063286c09e0479c8ab103161708ccc5bf06"
+    },
+    {
+      "patch": "patches/rt64/ios-metal-shaders.patch",
+      "sha256": "0b015073ae9aab5538414a22eb1c461680ae0a54f21b4ca125eb4e035fe54f6a",
+      "commit": "65438dcf3ce1261d128f14c1770a8e76fe0ea404"
+    },
+    {
+      "patch": "patches/rt64/ios-metal-view-lifetime.patch",
+      "sha256": "54529b987c70bd427c9f89e174353a2efe3dc140133cc88f123348e953e1203d",
+      "commit": "f55a2a6f83f680014979266b23630031f4c2e1a5"
+    },
+    {
+      "patch": "patches/rt64/ios-native-file-dialog-null.patch",
+      "sha256": "6e23fb461dd234a15d14156f482c541f1b19ca18f56d9b8550d399a67b704c91",
+      "commit": "5246a8a910306f623da7530809ce6fea55464aa4"
+    },
+    {
+      "patch": "patches/rt64/ios-render-target-limit.patch",
+      "sha256": "5ea3e81a9565a6dd7c6dee92ae39c79057b87e35038de010b8e2010a4bb8009f",
+      "commit": "a8d8de6081953491dcbfd99c76036eb1343449c9"
+    },
+    {
+      "patch": "patches/rt64/ios-uikit-window.patch",
+      "sha256": "82d71a65aa2000f7b8fc1e0603465164be388b2d0a3b670ad2606d0e5567830c",
+      "commit": "391e6139c879c8135f287215d8e7c71d27912838"
+    },
+    {
+      "patch": "patches/rt64/metal-clear-state-cache.patch",
+      "sha256": "00689c751457ba66b3551a3241a603ec1b8c06523e5c1c456e8a6485b86899b3",
+      "commit": "a86837501d992e373360aeedae60707b33a6f29a"
+    },
+    {
+      "patch": "patches/rt64/metal-descriptor-state-cache.patch",
+      "sha256": "f9848698b10e8fff113c5d17dafefefb295686c153629c702d95d568635d5ad5",
+      "commit": "649eaf5538ce05fae5df2f2409709c90ce87650f"
+    },
+    {
+      "patch": "patches/rt64/metal-drawable-slot-lifetime.patch",
+      "sha256": "bf78949cc9ff8aa5fb1c89f6c60b5969ad2fbcd9739f0e14ebc89dc06304b8f4",
+      "commit": "6b895f12ede6b22a56f232894a1c1baa9576ba46"
+    },
+    {
+      "patch": "patches/rt64/metal-worker-lifetime.patch",
+      "sha256": "41b97f4b72636db6cecc7d22976f5d83affce12593a3accf802b69098944b260",
+      "commit": "40351e667c599ef7bdf18841d5fd2213d1252307"
+    },
+    {
+      "patch": "patches/rt64/use-provided-sdl2.patch",
+      "sha256": "94c256666816fe5d3b04c94d64038d5d4411f9d109d40e4848e3f05ace4a0139",
+      "commit": "40351e667c599ef7bdf18841d5fd2213d1252307"
+    }
+  ],
+  "preparationCommit": "40351e667c599ef7bdf18841d5fd2213d1252307"
+}

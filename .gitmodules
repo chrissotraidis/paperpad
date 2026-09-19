@@ -1,0 +1,3 @@
+[submodule "vendor/paper-mario-recut"]
+	path = vendor/paper-mario-recut
+	url = https://github.com/chrissotraidis/Paper-Mario-ReCut.git

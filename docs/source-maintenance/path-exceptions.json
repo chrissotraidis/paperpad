@@ -1,0 +1,8 @@
+{
+  "lib/N64ModernRuntime/librecomp/CMakeLists.txt": {
+    "sha256": "802af27b54af76291f8015348f87c1f5c5cb0bcdb7c3d17ea1f32c23221838fa",
+    "mode": 420,
+    "reason": "Allow explicit source path after moving ReCut to vendor; no compile behavior change.",
+    "commit": "43f61ea373e02372ca9e0330beccf97ec4c72e44"
+  }
+}

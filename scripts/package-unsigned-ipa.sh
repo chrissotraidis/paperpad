@@ -10,6 +10,8 @@ OUTPUT="${PAPERPAD_UNSIGNED_IPA_OUTPUT:-$ROOT/artifacts/PaperPad-v0.1.0-preview.
 [[ -d "$APP" ]] || { echo "PaperPad device app not found: $APP" >&2; exit 1; }
 [[ -x "$APP/PaperPad" ]] || { echo "PaperPad executable not found in: $APP" >&2; exit 1; }
 
+"$ROOT/scripts/verify-sources.sh"
+
 package_root="$(mktemp -d /tmp/paperpad-package.XXXXXX)"
 trap 'rm -rf "$package_root"' EXIT
 staged_app="$package_root/Payload/PaperPad.app"
@@ -24,6 +26,7 @@ rm -f "$staged_app/embedded.mobileprovision"
 
 ditto "$ROOT/docs/INSTALL_IPA.md" "$staged_app/INSTALL_IPA.md"
 ditto "$ROOT/RIGHTS_AND_LICENSES.md" "$staged_app/RIGHTS_AND_LICENSES.md"
+python3 "$ROOT/scripts/build-provenance.py" "$staged_app/BUILD_PROVENANCE.json"
 
 copy_license() {
     local source="$1"
@@ -33,12 +36,12 @@ copy_license() {
     ditto "$source" "$staged_app/Licenses/$destination"
 }
 
-copy_license "$ROOT/ref/paper-mario-recut/LICENSE" "Paper-Mario-ReCut/LICENSE"
-copy_license "$ROOT/ref/paper-mario-recut/COMPLIANCE.md" "Paper-Mario-ReCut/COMPLIANCE.md"
-copy_license "$ROOT/ref/paper-mario-recut/THIRD_PARTY_NOTICES.md" "Paper-Mario-ReCut/THIRD_PARTY_NOTICES.md"
-copy_license "$ROOT/ref/paper-mario-recut/lib/N64ModernRuntime/COPYING" "N64ModernRuntime/COPYING"
-copy_license "$ROOT/ref/paper-mario-recut/lib/N64ModernRuntime/N64Recomp/LICENSE" "N64Recomp/LICENSE"
-copy_license "$ROOT/ref/paper-mario-recut/lib/rt64/LICENSE" "RT64/LICENSE"
+copy_license "$ROOT/vendor/paper-mario-recut/LICENSE" "Paper-Mario-ReCut/LICENSE"
+copy_license "$ROOT/vendor/paper-mario-recut/COMPLIANCE.md" "Paper-Mario-ReCut/COMPLIANCE.md"
+copy_license "$ROOT/vendor/paper-mario-recut/THIRD_PARTY_NOTICES.md" "Paper-Mario-ReCut/THIRD_PARTY_NOTICES.md"
+copy_license "$ROOT/vendor/paper-mario-recut/lib/N64ModernRuntime/COPYING" "N64ModernRuntime/COPYING"
+copy_license "$ROOT/vendor/paper-mario-recut/lib/N64ModernRuntime/N64Recomp/LICENSE" "N64Recomp/LICENSE"
+copy_license "$ROOT/vendor/paper-mario-recut/lib/rt64/LICENSE" "RT64/LICENSE"
 copy_license "$ROOT/ref/SDL2/LICENSE.txt" "SDL2/LICENSE.txt"
 copy_license "$ROOT/ref/zstd/LICENSE" "zstd/LICENSE"
 copy_license "$ROOT/ref/mupen64plus-rsp-hle/LICENSES" "mupen64plus-rsp-hle/LICENSES"
@@ -51,7 +54,7 @@ for relative in \
     thirdparty/miniz/LICENSE \
     thirdparty/o1heap/LICENSE \
     thirdparty/xxHash/LICENSE; do
-    copy_license "$ROOT/ref/paper-mario-recut/lib/N64ModernRuntime/$relative" "N64ModernRuntime/$relative"
+    copy_license "$ROOT/vendor/paper-mario-recut/lib/N64ModernRuntime/$relative" "N64ModernRuntime/$relative"
 done
 for relative in \
     hlslpp/LICENSE \
@@ -64,7 +67,7 @@ for relative in \
     stb/LICENSE \
     xxHash/LICENSE \
     zstd/LICENSE; do
-    copy_license "$ROOT/ref/paper-mario-recut/lib/rt64/src/contrib/$relative" "RT64/contrib/$relative"
+    copy_license "$ROOT/vendor/paper-mario-recut/lib/rt64/src/contrib/$relative" "RT64/contrib/$relative"
 done
 
 find "$package_root/Payload" -exec touch -h -t 202001010000 {} +

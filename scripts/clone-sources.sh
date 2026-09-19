@@ -4,6 +4,13 @@ set -euo pipefail
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 source "$script_dir/lib/common.sh"
 
+# An exported source tree already contains every locked dependency; do not fetch.
+if [[ -f "$PAPERPAD_ROOT/SOURCE_MANIFEST.json" ]]; then
+    python3 "$script_dir/source-archive.py" --verify "$PAPERPAD_ROOT"
+    python3 "$script_dir/verify-prepared-source.py"
+    exit 0
+fi
+
 require_command git
 require_command jq
 
@@ -19,6 +26,8 @@ clone_locked_source() {
         git clone --filter=blob:none "$url" "$destination"
     fi
 
+    [[ -z "$(git -C "$destination" status --porcelain --untracked-files=all)" ]] ||
+        die "$label checkout is dirty at $destination; preserve its changes before preparing sources"
     actual=$(git -C "$destination" rev-parse HEAD)
     if [[ "$actual" != "$commit" ]]; then
         if ! git -C "$destination" diff --quiet ||
@@ -35,16 +44,11 @@ clone_locked_source() {
 
 mkdir -p "$PAPERPAD_REF"
 clone_locked_source papermario "$PAPERPAD_REF/papermario" "papermario decomp"
-clone_locked_source paperMarioReCut "$PAPERPAD_REF/paper-mario-recut" "Paper-Mario-ReCut"
 clone_locked_source mupen64plusRspHle "$PAPERPAD_REF/mupen64plus-rsp-hle" "mupen64plus-rsp-hle"
 clone_locked_source sdl2 "$PAPERPAD_REF/SDL2" "SDL2"
 clone_locked_source zstd "$PAPERPAD_REF/zstd" "zstd"
 
 "$script_dir/init-submodules.sh"
 
-# ReCut vendors prebuilt DXC binaries as ordinary files, so its flattened
-# source archive loses the executable bit that the shader build requires.
-for dxc in "$PAPERPAD_REF/paper-mario-recut/lib/rt64/src/contrib/dxc/bin/"*/dxc-macos; do
-    [[ -f "$dxc" ]] && chmod +x "$dxc"
-done
+"$script_dir/verify-sources.sh"
 note "Pinned PaperPad source inputs are ready."
