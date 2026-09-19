@@ -5,7 +5,7 @@ The owner's 2026-09-19 decision is to keep **two builds**. Original remains the 
 | Product | Identity | Current delivery |
 |---|---|---|
 | PaperPad Original | `com.chrissotraidis.paperpad` | Existing public `v0.1.0-preview.2`, unchanged |
-| PaperPad Boat | `com.chrissotraidis.paperpad.boat` | Private iPad test, 0.2.0/build 2; iOS/iPadOS 16.3+ |
+| PaperPad Boat | `com.chrissotraidis.paperpad.boat` | Private iPad test, 0.2.0/build 3; iOS/iPadOS 16.3+ |
 
 The original app's source-maintenance PR #6 remains separate. This branch builds on that source/docs work but does not change Original's runtime pin or build entry points. The same UIKit files provide touch layouts, independent phone/tablet preferences, ROM validation, settings and bounded diagnostics. Boat-specific hooks compile only for its own target. The earlier audit's single-successor recommendation is superseded by the owner's two-build instruction.
 
@@ -65,3 +65,9 @@ Original's private companion is Preview 2 with only the registered launch scheme
 Before updating Original, all 11 Documents/Library files were backed up, archived, restored separately and hash-verified. All 11 remained byte-identical after the in-place update; save files were checked again after launching Original and still matched. Boat received a verified copy of the existing ROM in its own container, with no Original saves imported. A missing Original companion produces a native message and releases modal input suspension.
 
 The installed pair's URL registrations and versions were read back. Original launched with its URL payload; the Boat URL opened the Simulator build. Physically tapping the three-dot action, controller/touch behavior, audio quality and save/reload gameplay remain owner acceptance checks. The device screenshot service was unavailable; no on-device screenshot or visual acceptance is claimed. Existing extraction asset-clash diagnostics remain recorded. No public binary release was published.
+
+### Build 3: native iPad window correction
+
+The owner reported that build 2 opened in a compatibility window. The Boat Ninja bundle omitted `UIDeviceFamily`, unlike Original's Xcode-produced `[1, 2]` declaration. The initial iPhone Simulator test did not cover this packaging boundary. Commit `6a5446f` adds explicit iPhone/iPad family metadata, the matching Xcode target property, package assertions for native iPad/full-screen/landscape support and startup window diagnostics.
+
+Build 3 was audited, signed and installed in place on the same iPad. Its live log reports `idiom=1 bounds=1366x1024 screen=1366x1024 scale=2.0`, establishing native iPad mode and a window matching the full screen. The private unsigned IPA SHA-256 is `a98526d7cb2d1d0af9d380b0883646fa4e965335e770d41c9c409252a1b0cf2d`. Boat's 20 pre-update files were backed up; ROM/archive bytes and existing configuration values were preserved (upstream added missing controller defaults). Original was untouched during this correction. Physical gameplay and interaction acceptance remains separate from the window-size proof.
