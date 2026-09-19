@@ -4,6 +4,11 @@
 <dict>
     <key>CFBundleIconFile</key>
     <string>Icon</string>
+    <key>CFBundleURLTypes</key>
+    <array><dict>
+        <key>CFBundleURLName</key><string>paperpad-boat</string>
+        <key>CFBundleURLSchemes</key><array><string>paperpad-boat</string></array>
+    </dict></array>
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
@@ -21,7 +26,7 @@
     <key>CFBundleShortVersionString</key>
     <string>0.2.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>PaperPadBuildProfile</key>
     <string>PaperBoat development</string>
     <key>GCSupportedGameControllers</key>

@@ -515,6 +515,35 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         [UIAlertController alertControllerWithTitle:@"PaperPad"
                                             message:nil
                                      preferredStyle:UIAlertControllerStyleActionSheet];
+#ifdef PAPERPAD_APP
+    [menu addAction:[UIAlertAction actionWithTitle:@"Launch Original"
+                                             style:UIAlertActionStyleDefault
+                                           handler:^(__unused UIAlertAction* action) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35 * NSEC_PER_SEC)),
+                       dispatch_get_main_queue(), ^{
+            // Keep separate engines and save formats in their existing app containers.
+            NSURL* url = [NSURL URLWithString:@"paperpad-original://launch"];
+            fprintf(stderr, "[paperpad-boat] Launch Original requested\n");
+            [UIApplication.sharedApplication openURL:url options:@{} completionHandler:^(BOOL opened) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    fprintf(stderr, "[paperpad-boat] Launch Original opened=%d\n", (int)opened);
+                    [self setModalControlsHidden:NO];
+                    if (opened) return;
+                    UIViewController* presenter = self.window.rootViewController;
+                    while (presenter.presentedViewController != nil) presenter = presenter.presentedViewController;
+                    if (presenter == nil) return;
+                    [self setModalControlsHidden:YES];
+                    UIAlertController* alert = [UIAlertController alertControllerWithTitle:@"Original Is Unavailable"
+                        message:@"Install the companion PaperPad Original build to launch it here. Your Original saves stay in that app."
+                        preferredStyle:UIAlertControllerStyleAlert];
+                    [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault
+                        handler:^(__unused UIAlertAction* action) { [self setModalControlsHidden:NO]; }]];
+                    [presenter presentViewController:alert animated:YES completion:nil];
+                });
+            }];
+        });
+    }]];
+#endif
     [menu addAction:[UIAlertAction actionWithTitle:@"Settings"
                                              style:UIAlertActionStyleDefault
                                            handler:^(__unused UIAlertAction* action) {

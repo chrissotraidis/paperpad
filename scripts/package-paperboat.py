@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='paperpad-boat-package-') as tmp:
                 dest=app/'Licenses'/label/file;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
     info=plistlib.loads((app/'Info.plist').read_bytes())
     assert info['CFBundleIdentifier']=='com.chrissotraidis.paperpad.boat'
-    assert info['CFBundleShortVersionString']=='0.2.0' and info['CFBundleVersion']=='1'
+    assert info['CFBundleShortVersionString']=='0.2.0' and info['CFBundleVersion']=='2'
     assert info['MinimumOSVersion']=='16.3'
     assert subprocess.check_output(['lipo','-archs',str(app/'Paperboat')],text=True).strip()=='arm64'
     platform=subprocess.check_output(['xcrun','vtool','-show-build',str(app/'Paperboat')],text=True)
