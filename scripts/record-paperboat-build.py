@@ -9,5 +9,12 @@ sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 doc={'applicationCommit':git('rev-parse','HEAD'),'dirty':bool(git('status','--porcelain')),
      'engine':'PaperBoat','sources':json.loads((root/'paperboat.lock.json').read_text()),
      'shellInputs':{p:sha(root/p) for p in inputs},'executableSHA256':sha(build/'Paperboat.app/Paperboat')}
+doc['toolchain'] = {
+    'xcode': subprocess.check_output(['xcodebuild','-version'],text=True).strip(),
+    'iphoneosSDK': subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-version'],text=True).strip(),
+    'cmake': subprocess.check_output(['cmake','--version'],text=True).splitlines()[0],
+    'ninja': subprocess.check_output(['ninja','--version'],text=True).strip(),
+    'python': sys.version.split()[0],
+}
 (build/'PAPERPAD_BUILD.json').write_text(json.dumps(doc,indent=2)+'\n')
 print('Recorded exact PaperBoat build inputs and executable hash.')
