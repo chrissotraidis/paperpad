@@ -53,7 +53,18 @@ def create(output):
             destination = stage / prefix
             destination.mkdir(parents=True, exist_ok=True)
             with tarfile.open(fileobj=io.BytesIO(data)) as archive:
-                archive.extractall(destination, filter='data')
+                # Git-created archives only; validate paths and links for Python
+                # versions predating tarfile's data_filter API.
+                boundary = destination.resolve()
+                for member in archive.getmembers():
+                    target = (destination / member.name).resolve()
+                    if not target.is_relative_to(boundary):
+                        raise SystemExit(f'Unsafe source archive path: {member.name}')
+                    if member.issym() and not (target.parent / member.linkname).resolve().is_relative_to(boundary):
+                        raise SystemExit(f'Unsafe source symlink: {member.name}')
+                    if not (member.isfile() or member.isdir() or member.issym()):
+                        raise SystemExit(f'Unexpected source entry: {member.name}')
+                    archive.extract(member, destination)
         files = {str(p.relative_to(stage)): entry(p) for p in sorted(stage.rglob('*'))
                  if p.is_file() or p.is_symlink()}
         doc = {'schemaVersion': 1, 'applicationCommit': git(ROOT, 'rev-parse', 'HEAD'),
