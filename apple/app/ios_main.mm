@@ -1134,6 +1134,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
 #ifdef PAPERPAD_APP
 // Both settings panels use the same native grouped controls and compact popover.
 @implementation PaperPadCompactSettingsController {
+    NSTimer* _statusTimer;
     UISlider* _slider;
     UILabel* _valueLabel;
     UISwitch* _enabledSwitch;
@@ -1166,8 +1167,20 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
         self.navigationController.preferredContentSize = size;
     }
 }
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    if (!self.touchSettingsOnly) _statusTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+        target:self selector:@selector(refreshRenderStatus) userInfo:nil repeats:YES];
+}
+- (void)refreshRenderStatus {
+    UITableViewHeaderFooterView* footer = [self.tableView footerViewForSection:1];
+    footer.textLabel.text = [self tableView:self.tableView titleForFooterInSection:1];
+    [footer setNeedsLayout];
+}
 - (void)viewDidDisappear:(BOOL)animated {
     [super viewDidDisappear:animated];
+    [_statusTimer invalidate];
+    _statusTimer = nil;
     [g_touch_overlay setModalControlsHidden:NO];
 }
 - (void)presentationControllerDidDismiss:(UIPresentationController*)presentationController {
