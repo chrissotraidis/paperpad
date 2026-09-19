@@ -1,5 +1,8 @@
 # PaperPad
 
+
+**Development:** PaperPad Original remains the existing release. A separate [PaperPad Boat build](docs/PAPERBOAT_DEVELOPMENT.md) now integrates PaperBoat with the native PaperPad controls and diagnostics. It is a private development candidate, not a new public release.
+
 ![PaperPad battle with Mario and three flying Goombas on iPad](docs/release-audit/28-paperpad-flying-goomba-battle-2026-08-14.png)
 
 <p align="center">

@@ -1,5 +1,7 @@
 # PaperPad engine decision and PaperBoat source audit
 
+**Scope update, 2026-09-19:** The owner subsequently chose two coexisting builds: preserve Original and develop PaperPad Boat with the same Apple controls/logging. See [implementation and acceptance](PAPERBOAT_DEVELOPMENT.md). The strategic single-successor recommendation below is historical.
+
 Date: 2026-09-19. Decision: **use PaperBoat as the engine foundation for PaperPad's next major version; preserve the current PaperPad product and qualify the replacement before switching users.** First modernize the existing source maintenance without changing engine versions or gameplay. Engine replacement belongs in a separate change.
 
 This is an architecture, implementation, dependency, release and migration audit, with a bounded iOS compile attempt. It is not a measured performance comparison or a full-game acceptance report. No installed application or user save was changed.

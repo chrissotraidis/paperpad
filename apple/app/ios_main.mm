@@ -18,6 +18,9 @@
 #include "paperpad_input.h"
 
 extern "C" int paperpad_recomp_main(int argc, char** argv);
+#ifdef PAPERPAD_APP
+extern "C" void PaperPadBoat_SetInputSuspended(int);
+#endif
 
 @class PaperPadTouchOverlayView;
 @class PaperPadSettingsViewController;
@@ -585,6 +588,9 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 }
 
 - (void)setModalControlsHidden:(BOOL)hidden {
+#ifdef PAPERPAD_APP
+    PaperPadBoat_SetInputSuspended(hidden);
+#endif
     _modalControlsHidden = hidden;
     _utilityButton.hidden = hidden || _editing;
     if (hidden) [self clearInput];
