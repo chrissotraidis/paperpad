@@ -30,9 +30,15 @@ with tempfile.TemporaryDirectory(prefix='paperpad-boat-package-') as tmp:
             p=source/file
             if p.is_file() and re.match(r'(?i)^(licen[cs]e|copying|notice|copyright|third.party.notices|ofl|unlicense)',p.name):
                 dest=app/'Licenses'/label/file;dest.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,dest)
+    # Single-header dependencies carry their notices inside the pinned headers.
+    for source, name in [(build/'_deps/stb/stb_image.h', 'stb_image.h'),
+                         (build/'_deps/sse2neon/sse2neon.h', 'sse2neon.h')]:
+        dest=app/'Licenses'/'single-headers'/name
+        dest.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(source,dest)
     info=plistlib.loads((app/'Info.plist').read_bytes())
     assert info['CFBundleIdentifier']=='com.chrissotraidis.paperpad.boat'
-    assert info['CFBundleShortVersionString']=='0.2.0' and info['CFBundleVersion']=='6'
+    assert info['CFBundleShortVersionString']=='0.2.0' and info['CFBundleVersion']=='7'
     assert info['CFBundleDisplayName']=='PaperPad' and info['CFBundleName']=='PaperPad'
     assert info['MinimumOSVersion']=='16.3'
     assert info.get('UIDeviceFamily')==[1,2], 'Boat must declare native iPhone and iPad support'
