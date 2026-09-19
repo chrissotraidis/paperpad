@@ -216,9 +216,9 @@ extern "C" void PaperPadBoat_ReportSaveError(const char* message) {
         UIViewController* presenter=window.rootViewController;
         while(presenter.presentedViewController)presenter=presenter.presentedViewController;
         if(!presenter)return;
-        showing=true;modal.store(true);
+        showing=true;const bool previouslySuspended=modal.exchange(true);
         UIAlertController* alert=[UIAlertController alertControllerWithTitle:@"Save Problem" message:text preferredStyle:UIAlertControllerStyleAlert];
-        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction*){showing=false;modal.store(false);}]];
+        [alert addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:^(UIAlertAction*){showing=false;modal.store(previouslySuspended);}]];
         [presenter presentViewController:alert animated:YES completion:nil];
     });
 }
