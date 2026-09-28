@@ -3,7 +3,7 @@
 
 PaperPad 0.2.0 uses [Harbour Masters’ PaperBoat](https://github.com/HarbourMasters/PaperBoat), with PaperPad's native Apple touch controls, settings, ROM import and diagnostics. The app and download are named **PaperPad**.
 
-[Download PaperPad.ipa](https://github.com/chrissotraidis/paperpad/releases/tag/v0.2.0-preview.1) · [Release notes](docs/RELEASE_NOTES_0.2.0.md) · [Build and exact source pins](docs/PAPERBOAT_DEVELOPMENT.md)
+Previous builds have been retired; a new version is in progress.
 
 - iPhone/iPad, iOS/iPadOS **16.3 or newer**; unsigned IPA for signing with your own credentials.
 - Supply an unmodified **Paper Mario (US) 1.0** ROM locally. No ROM or extracted game archive is included.
@@ -49,7 +49,6 @@ PaperPad Original `v0.1.0-preview.2` is the retained earlier iPhone and iPad pre
 | iPad Simulator | Current development build, touch/settings flows, diagnostics, and later-game fixture verified |
 | Physical iPad | Preview 2 installed in place and booted through active gameplay without changing the private ROM, saves, or controller preferences; earlier battle, progression, and longer controller routes remain valid |
 | Physical iPhone | Current clean build installed and launched; private test ROM/save migrated, with hands-on touch and gameplay acceptance open |
-| Public binary distribution | [ROM-free unsigned Preview 2](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.2); self-signing required |
 
 Preview 2 adds targeted SDL2 controller-slot reconciliation for missed disconnects, reconnects, and foreground resume. Deterministic tests cover single-controller return, two-controller slot preservation, held-input release, and a missed removal event. The exact signed release candidate also booted on the attached iPad after an in-place update that preserved its private ROM, saves, and controller preferences. Physical Bluetooth, wired, and natural-sleep reconnect acceptance remains open, as do complete mapping, physical-iPhone hands-on acceptance, and chapter-spanning testing.
 
@@ -57,7 +56,7 @@ See [Current status](docs/STATUS.md), [Technical debt](docs/TECH-DEBT.md), and t
 
 ## Download Preview 2
 
-Download `PaperPad-v0.1.0-preview.2-unsigned.ipa` and its checksum from the [Preview 2 release](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.2).
+Previous builds have been retired; a new version is in progress.
 
 - iPhone or iPad with iOS/iPadOS 15 or newer
 - arm64, ROM-free, and unsigned; sign it with your own Apple credentials
@@ -258,7 +257,7 @@ No. You must provide your own legally obtained, unmodified Paper Mario (US) 1.0 
 <details>
 <summary><strong>Is there an IPA or App Store build?</strong></summary>
 
-Yes: [Preview 2](https://github.com/chrissotraidis/paperpad/releases/tag/v0.1.0-preview.2) provides a ROM-free unsigned IPA for self-signing. There is no App Store, TestFlight, or pre-signed download. PaperPad never includes game data; users import their own supported ROM.
+Previous builds have been retired; a new version is in progress.
 </details>
 
 <details>
