@@ -35,7 +35,12 @@ clone_locked_source() {
             die "$label checkout is modified at $destination; refusing to change revisions"
         fi
         git -C "$destination" fetch --depth=1 origin "$commit"
-        git -C "$destination" checkout --detach "$commit"
+        git -C "$destination" checkout --detach "$commit" 2>/dev/null || {
+            # The lock can move a source to a maintained fork: fetch from the locked URL.
+            git -C "$destination" remote set-url origin "$url"
+            git -C "$destination" fetch --depth=1 origin "$commit"
+            git -C "$destination" checkout --detach "$commit"
+        }
     fi
 
     assert_revision "$destination" "$commit" "$label"
