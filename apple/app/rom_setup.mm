@@ -386,7 +386,16 @@ extern "C" bool paperpad_prepare_rom_setup(void) {
     if (validateInstalledROM(root)) return true;
 
     PaperPadROMSetupController* controller = [[PaperPadROMSetupController alloc] init];
-    UIWindow* window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
+    // With UIKit scenes (required for the iOS 27 SDK) a window shows only when it is
+    // attached to the application scene.
+    UIWindow* window = nil;
+    for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class]) {
+            window = [[UIWindow alloc] initWithWindowScene:(UIWindowScene*)scene];
+            break;
+        }
+    }
+    if (window == nil) window = [[UIWindow alloc] initWithFrame:UIScreen.mainScreen.bounds];
     window.windowLevel = UIWindowLevelNormal + 2.0;
     window.rootViewController = controller;
     [window makeKeyAndVisible];
