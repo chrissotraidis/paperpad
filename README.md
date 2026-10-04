@@ -11,6 +11,13 @@ PaperPad 0.2.0 uses [Harbour Masters’ PaperBoat](https://github.com/HarbourMas
 
 The release includes exact nested sources, notices, build provenance and checksums. [Source updates and offline archive builds](docs/PAPERBOAT_DEVELOPMENT.md#version-020-source-delivery) and [rights limitations](RIGHTS_AND_LICENSES.md) are documented. Report app/platform issues here with the build and diagnostic log; do not assume upstream owns an Apple-port issue.
 
+> [!NOTE]
+> **AI disclosure:** PaperPad uses substantial AI assistance for code, tests,
+> documentation, debugging and maintenance. Some support replies and maintenance
+> tasks are automated. There is no audited percentage of AI-generated code.
+> Build, test and device records describe what was checked. This disclosure
+> concerns PaperPad's workflow, not the authorship of its upstream projects.
+
 ## Get PaperPad
 
 Releases publish no app: PaperPad is compiled from the Paper Mario decompilation, so you make your
@@ -41,6 +48,8 @@ The following screenshots, platform status and instructions describe the retaine
   <img alt="Metal renderer" src="https://img.shields.io/badge/renderer-Metal-5E5CE6">
   <img alt="Public preview 2" src="https://img.shields.io/badge/release-v0.1.0--preview.2-FF9F0A">
   <img alt="ROM not included" src="https://img.shields.io/badge/game%20data-not%20included-FF453A">
+  <a href="https://github.com/chrissotraidis/padmint"><img alt="Build PaperPad with PadMint" src="https://img.shields.io/badge/PadMint-build%20your%20own-3EB489"></a>
+  <a href="https://discord.gg/xwHfUD2bxW"><img alt="Join the PaperPad Discord" src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&amp;logoColor=white"></a>
 </p>
 
 PaperPad combines the [pmret Paper Mario decompilation](https://github.com/pmret/papermario) with the statically recompiled runtime and renderer from [Paper-Mario-ReCut](https://github.com/SMCGames/Paper-Mario-ReCut), pinned through [PaperPad’s maintained source branch](https://github.com/chrissotraidis/Paper-Mario-ReCut/tree/codex/paperpad-preview2-source). It adds a native Apple application shell, Metal presentation, keyboard and controller input, customizable touch controls, native settings, and private first-run ROM import.
@@ -314,6 +323,16 @@ No. Development testing covers the opening flow, early battles and progression, 
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Rights and licensing boundary](RIGHTS_AND_LICENSES.md)
+
+## Community and support
+
+[Join the Discord](https://discord.gg/xwHfUD2bxW) for help and news. It is one
+community for PaperPad and its sibling projects, such as KartPad, BlueWake and
+MeleePad: ask about setup, building with PadMint, and installing, share how it
+runs on your device, and hear about new releases first.
+
+Found a bug? [Open an issue](https://github.com/chrissotraidis/paperpad/issues)
+with your device, its OS version, and the steps that led to it.
 
 ## Credits and design references
 
