@@ -16,9 +16,23 @@ if [[ ! -e "$root/vendor/paperboat/.git" ]]; then
  git -C "$root" submodule update --init --recursive -- vendor/paperboat
 fi
 python3 "$root/scripts/verify-paperboat.py"
+# PaperBoat must use the same scene-capable SDL as PaperPad Original.
+sdl_source="$root/ref/SDL2"
+sdl_commit=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"]["sdl2"]["commit"])' "$root/dependencies.lock.json")
+sdl_url=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["sources"]["sdl2"]["url"])' "$root/dependencies.lock.json")
+if [[ ! -d "$sdl_source" ]]; then
+ mkdir -p "$root/ref"
+ git clone --filter=blob:none --no-checkout "$sdl_url" "$sdl_source"
+ git -C "$sdl_source" checkout --detach "$sdl_commit"
+fi
+if [[ "$(git -C "$sdl_source" rev-parse HEAD)" != "$sdl_commit" || -n "$(git -C "$sdl_source" status --porcelain)" ]]; then
+ echo "SDL2 must be clean at the locked revision: $sdl_source" >&2
+ exit 1
+fi
 cmake -S "$root/vendor/paperboat" -B "$root/build-paperboat-$profile" -G Ninja \
  -DCMAKE_TOOLCHAIN_FILE=cmake/ios.paperboat.toolchain.cmake -DPLATFORM="$platform" \
  -DIOS_SIGNING=OFF -DCMAKE_BUILD_TYPE=Release -DPAPERPAD_APP_ROOT="$root" \
+ -DFETCHCONTENT_SOURCE_DIR_SDL2="$sdl_source" \
  -DSDL_SHARED=OFF -DSDL_STATIC=ON
 python3 "$root/scripts/verify-paperboat.py" --build-dir "$root/build-paperboat-$profile"
 cmake --build "$root/build-paperboat-$profile" --parallel "$build_jobs"

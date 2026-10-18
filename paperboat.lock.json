@@ -68,8 +68,9 @@
       "commit": "aa8370981b2cf57c46172e6aa639d720137f9a92"
     },
     "sdl2": {
-      "url": "https://github.com/libsdl-org/SDL.git",
-      "commit": "5d249570393f7a37e037abf22cd6012a4cc56a71"
+      "url": "https://github.com/chrissotraidis/SDL.git",
+      "commit": "c6756fcd3de8090a8f72ac1a0b6fb6e50f0021d1",
+      "path": "ref/SDL2"
     },
     "spdlog": {
       "url": "https://github.com/gabime/spdlog.git",

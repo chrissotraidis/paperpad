@@ -23,7 +23,7 @@ with tempfile.TemporaryDirectory(prefix='paperpad-boat-package-') as tmp:
     (app/'BUILD_PROVENANCE.json').write_text(json.dumps(record,indent=2)+'\n')
     shutil.copy(root/'apple/paperboat/ThirdPartyNotices.txt',app/'ThirdPartyNotices.txt')
     roots={p:root/p for p in record['sources']['sources']}
-    roots.update({f'fetched/{name}':build/'_deps'/(name+'-src') for name in record['sources']['buildDependencies']})
+    roots.update({f'fetched/{name}':root/source['path'] if source.get('path') else build/'_deps'/(name+'-src') for name,source in record['sources']['buildDependencies'].items()})
     for label,source in roots.items():
         files=subprocess.check_output(['git','-C',str(source),'ls-files'],text=True).splitlines()
         for file in files:

@@ -22,7 +22,7 @@ parser.add_argument('--build-dir', type=Path)
 args = parser.parse_args()
 if args.build_dir:
     for name, source in lock['buildDependencies'].items():
-        folder = args.build_dir / '_deps' / (name + '-src')
+        folder = root / source['path'] if source.get('path') else args.build_dir / '_deps' / (name + '-src')
         if git(folder, 'rev-parse', 'HEAD') != source['commit']:
             raise SystemExit(f'Fetched dependency pin mismatch: {name}')
         prepared = source.get('preparedFiles', {})
