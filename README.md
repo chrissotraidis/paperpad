@@ -33,9 +33,7 @@ PaperPad to keep your saves. PaperPad Original (below) is a separate app with se
 
 ## PaperPad Original reference
 
-The following screenshots, platform status and instructions describe the retained **Original Preview 2** build. Its ReCut/RT64 runtime and earlier saves remain available separately; they are not the PaperBoat build above.
-
-![PaperPad battle with Mario and three flying Goombas on iPad](docs/release-audit/28-paperpad-flying-goomba-battle-2026-08-14.png)
+The following platform status and instructions describe the retained **Original Preview 2** build. Its ReCut/RT64 runtime and earlier saves remain available separately; they are not the PaperBoat build above.
 
 <p align="center">
   <strong>Paper Mario recompiled for Apple Silicon.</strong><br>
@@ -173,23 +171,6 @@ Opening the menu, Settings, share sheet, or ROM picker clears held input and hid
 | D-pad | `W` `A` `S` `D` | C-buttons | `I` `J` `K` `L` |
 
 SDL-compatible controllers use the left stick, D-pad, face buttons, shoulders, left trigger for Z, and right stick for the C-buttons. A physical Kishi V2 session verified analog plus A/B/Z/L/R/Start during sustained play. Automated tests cover disconnect input release, single-controller reconnect, two-controller slot preservation, and foreground reconciliation after a missed removal; D-pad, all C directions, Bluetooth/wired reconnect, and natural-sleep behavior still require physical acceptance.
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="docs/release-audit/29-paperpad-goomba-battle-2026-08-14.png" alt="PaperPad battle gameplay with touch controls on iPad">
-    </td>
-    <td width="50%">
-      <img src="docs/release-audit/30-paperpad-title-screen-2026-08-14.png" alt="Paper Mario title screen running in PaperPad on iPad">
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Battle gameplay</strong><br>Native Metal presentation with the complete touch interface.</td>
-    <td align="center"><strong>Paper Mario on iPad</strong><br>Original 4:3 presentation with customizable controls.</td>
-  </tr>
-</table>
 
 ## What works
 
