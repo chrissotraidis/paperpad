@@ -323,4 +323,11 @@ Its phone/tablet layout, persistent menu, modal input lifecycle, and customizati
 
 ## Legal
 
+PaperPad is an unofficial, fan-made project. It is not affiliated with, endorsed
+by, or sponsored by Nintendo. Paper Mario and related names and marks are
+trademarks of Nintendo (and their respective owners). This repository contains
+no game data, ROMs, or extracted assets. To use it, you need your own legally
+obtained copy of the game, and you build it yourself on your own machine. Please
+don't share game files or builds made from them.
+
 PaperPad is an independent, unofficial project and is not affiliated with or endorsed by Nintendo or any upstream project. Paper Mario and all related game names, characters, copyrights, and trademarks belong to their respective owners. Every dependency retains its own license and rights boundary; the combined tree should not be described as carrying a single blanket license. See [RIGHTS_AND_LICENSES.md](RIGHTS_AND_LICENSES.md) and [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md). Neither document is legal advice.
