@@ -31,6 +31,10 @@ IPA in your Downloads folder; install it with AltStore Classic, SideStore or Sid
 (USA) 1.0 ROM in Files; PaperPad extracts it privately on the device. Install over an existing
 PaperPad to keep your saves. PaperPad Original (below) is a separate app with separate saves.
 
+**No Mac?** You can build the iPhone and iPad app on GitHub's free Mac from Windows,
+Linux or any computer with a web browser: follow
+[PadMint's steps](https://github.com/chrissotraidis/padmint#no-mac-build-on-githubs-mac).
+
 ## PaperPad Original reference
 
 The following platform status and instructions describe the retained **Original Preview 2** build. Its ReCut/RT64 runtime and earlier saves remain available separately; they are not the PaperBoat build above.
@@ -44,7 +48,7 @@ The following platform status and instructions describe the retained **Original 
   <img alt="iOS and iPadOS 15 or newer" src="https://img.shields.io/badge/iOS%20%2F%20iPadOS-15%2B-0A84FF?logo=apple">
   <img alt="Apple Silicon macOS" src="https://img.shields.io/badge/macOS-Apple%20Silicon-0A84FF?logo=apple">
   <img alt="Metal renderer" src="https://img.shields.io/badge/renderer-Metal-5E5CE6">
-  <img alt="Public preview 2" src="https://img.shields.io/badge/release-v0.1.0--preview.2-FF9F0A">
+  <img alt="Release 0.2.3" src="https://img.shields.io/badge/release-v0.2.3-FF9F0A">
   <img alt="ROM not included" src="https://img.shields.io/badge/game%20data-not%20included-FF453A">
   <a href="https://github.com/chrissotraidis/padmint"><img alt="Build PaperPad with PadMint" src="https://img.shields.io/badge/PadMint-build%20your%20own-3EB489"></a>
   <a href="https://discord.gg/xwHfUD2bxW"><img alt="Join the PaperPad Discord" src="https://img.shields.io/badge/Discord-Join%20the%20community-5865F2?logo=discord&amp;logoColor=white"></a>
@@ -247,7 +251,7 @@ No. You must provide your own legally obtained, unmodified Paper Mario (US) 1.0 
 <details>
 <summary><strong>Is there an IPA or App Store build?</strong></summary>
 
-No published IPA: PadMint builds your own on an Apple silicon Mac (see [Get PaperPad](#get-paperpad)). There is no App Store or TestFlight build.
+No published IPA: PadMint builds your own on an Apple silicon Mac or on GitHub's free Mac (see [Get PaperPad](#get-paperpad)). There is no App Store or TestFlight build.
 </details>
 
 <details>
