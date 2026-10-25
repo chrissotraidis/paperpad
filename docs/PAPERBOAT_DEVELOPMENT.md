@@ -11,7 +11,7 @@ The original app's source-maintenance PR #6 remains separate. This branch builds
 
 ## Source and fixes
 
-[paperboat.lock.json](../paperboat.lock.json) records the exact maintained PaperBoat, libultraship, Torch and 14 fetched Git dependency commits, plus hashes for two downloaded files. PaperBoat's upstream base remains `2f7d38e07bcb85c216bf37e8a0a1a5cf8731ceef`. The maintained PaperBoat fork is connected to HarbourMasters/PaperBoat. The existing libultraship fork is connected to Kenix3/libultraship; its project branch starts from the exact audited JeodC commit `7aa03b6c830b059e3ddd6ad20d3f289c5f406161`. Its default branch and other apps' pins are unchanged.
+[paperboat.lock.json](../paperboat.lock.json) records the exact maintained PaperBoat, libultraship, Torch and 14 fetched Git dependency commits, plus hashes and immutable URLs for three downloaded files. PaperBoat's upstream base remains `2f7d38e07bcb85c216bf37e8a0a1a5cf8731ceef`. The maintained PaperBoat fork is connected to HarbourMasters/PaperBoat. The existing libultraship fork is connected to Kenix3/libultraship; its project branch starts from the exact audited JeodC commit `7aa03b6c830b059e3ddd6ad20d3f289c5f406161`. Its default branch and other apps' pins are unchanged.
 
 - Enable Objective-C as a distinct CMake language so SDL `.m` files do not receive Objective-C++ standard flags.
 - Resolve the configuration filename once; honor the private Application Support path on iOS.
@@ -21,6 +21,8 @@ The original app's source-maintenance PR #6 remains separate. This branch builds
 - Correct `partnerUsedTime` loading, initialize save memory and release temporary allocations on parse failures. Save via a flushed temporary file and atomic replacement; keep a valid previous backup, recover from it when necessary, protect unreadable slots from overwriting, and show native errors instead of silently claiming success. No Original FlashRAM image is consumed.
 - Carry [upstream PR #157](https://github.com/HarbourMasters/PaperBoat/pull/157), original commit `52680665aa0f45740df31ee164a1c51c670db35b`, with Jeod's authorship: clear stale battle damage-popup effect references after effect removal. Source integration is verified; battle regression gameplay remains untested.
 - Capture upstream stdout/spdlog in the existing bounded PaperPad log instead of opening a second rotating log. Include engine identity, input changes, controller changes, map transitions, settings, renderer dimensions, periodic frame progression and a stall watchdog. Sharing retains the original bounded report and path sanitization. Private compiler paths are remapped out of executable strings.
+
+The build prepares and verifies the three standalone downloads before CMake runs. Valid cached files keep their contents and timestamps. Downloads get up to three attempts; a replacement is installed only after its checksum matches. CMake then uses the existing offline download adapter, so it cannot overwrite the verified headers or fetch a newer controller database. Post-configuration source verification remains required before compilation.
 
 The fetched ImGui package has libultraship's pre-existing four-file configuration/backend patch; zlib relocates its tracked configuration header during CMake preparation. These are recorded, upstream-owned package exceptions, verified by exact prepared hashes/deletion state. They are not PaperPad gameplay patches. Bootstrap/build scripts never reset an existing engine working tree.
 

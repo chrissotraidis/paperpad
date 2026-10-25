@@ -23,3 +23,19 @@ jobs:
           python3 scripts/verify-paperboat.py
           c++ -std=c++20 -Iapple/paperboat -Iref/SDL2/include tests/paperboat_input_test.cpp -o /tmp/paperpad-boat-input-test
           /tmp/paperpad-boat-input-test
+      - name: Check verified PaperBoat download retries and build entrypoint
+        run: python3 -B -m unittest discover -s tests -p "test_paperboat*.py"
+  paperboat:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the pinned PaperBoat sources
+        run: git submodule update --init --recursive -- vendor/paperboat
+      - name: Build unsigned PaperBoat with verified downloads
+        env:
+          PAPERPAD_BUILD_JOBS: '3'
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+        run: |
+          brew install cmake ninja
+          scripts/build-paperboat.sh device
