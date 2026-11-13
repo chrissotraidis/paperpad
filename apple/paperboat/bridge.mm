@@ -1,6 +1,7 @@
 // PaperPad's native Apple shell over the pinned PaperBoat engine.
 #include "paperpad_input.h"
 #include "controller_slots.h"
+#include "controller_can_play.h"
 #include "input_mapping.h"
 #include "resolution.h"
 #include <array>
@@ -120,7 +121,8 @@ extern "C" void PaperPadBoat_ReadController(void* raw) {
  for(int i=0;i<4;++i)pads[i]={};
  for(const auto& change:slots.reconcile(backend))
   std::fprintf(stderr,"[paperpad-boat] controller change=%d player=%d instance=%d\n",int(change.kind),change.player_slot,change.instance_id);
- static int lastConnected=-1;int connected=slots.connected_count()>0;
+ // Touch drives Player 1, so only a usable Player 1 controller hides it.
+ static int lastConnected=-1;int connected=paperpad::input::controller_can_play(slots.player_handle(0))?1:0;
  if(connected!=lastConnected){PaperPad_SetPhysicalControllerConnected(connected);lastConnected=connected;}
  if(!active.load() || modal.load() || nativeModal.load()){for(auto& tap:keyTaps)tap.store(0);return;}
  float x=0,y=0;uint16_t buttons=0;paperpad_touch_snapshot(&buttons,&x,&y);

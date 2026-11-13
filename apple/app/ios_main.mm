@@ -15,6 +15,7 @@
 #include "rom_setup.h"
 #include "diagnostics.h"
 #include "touch_tap_latch.h"
+#include "touch_visibility.h"
 #include "paperpad_input.h"
 
 extern "C" int paperpad_recomp_main(int argc, char** argv);
@@ -39,6 +40,7 @@ extern "C" void PaperPadBoat_SetInputSuspended(int);
 namespace {
 
 std::atomic<uint16_t> g_touch_buttons{0};
+// True when a usable physical controller owns Player 1, the player touch drives.
 std::atomic_bool g_physical_controller_connected{false};
 static PaperPadTouchOverlayView* g_touch_overlay = nullptr;
 PaperPadTouchTapLatch g_touch_taps;
@@ -147,6 +149,9 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 - (void)beginEditingLayout;
 - (void)resetLayout;
 - (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity;
+- (void)setAutoHideWithController:(BOOL)enabled;
+- (void)showTouchControls;
+- (BOOL)gameplayControlsVisible;
 - (void)setPhysicalControllerConnected:(BOOL)connected;
 - (void)setModalControlsHidden:(BOOL)hidden;
 @end
@@ -181,8 +186,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
     BOOL _undoDPadLinked;
     BOOL _undoCButtonsLinked;
     NSInteger _selected;
-    BOOL _gameplayControlsEnabled;
-    BOOL _physicalControllerConnected;
+    PaperPadTouchVisibility _visibility;
     BOOL _modalControlsHidden;
     CGFloat _globalOpacity;
     UIButton* _utilityButton;
@@ -197,7 +201,6 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         self.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         _controls = defaultControls();
         _selected = 9;
-        _gameplayControlsEnabled = YES;
         _globalOpacity = 0.70;
         _utilityButton = [[PaperPadMenuButton alloc] initWithFrame:CGRectZero];
         [_utilityButton setTitle:@"\u2022\u2022\u2022" forState:UIControlStateNormal];
@@ -447,8 +450,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
         const TouchControl& control = _controls[index];
-        if (!_editing && (!_gameplayControlsEnabled || _physicalControllerConnected ||
-                          _modalControlsHidden)) continue;
+        if (!_editing && ![self gameplayControlsLive]) continue;
         if (!control.visible && !_editing) continue;
         CGPoint center = [self centerForControl:control];
         CGFloat radius = [self radiusForControl:control];
@@ -542,8 +544,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 }
 
 - (NSInteger)controlAtPoint:(CGPoint)point includeHidden:(BOOL)includeHidden {
-    if (!_editing && (!_gameplayControlsEnabled || _physicalControllerConnected ||
-                      _modalControlsHidden)) return NSNotFound;
+    if (!_editing && ![self gameplayControlsLive]) return NSNotFound;
     NSInteger nearest = NSNotFound;
     CGFloat nearestDistance = CGFLOAT_MAX;
     for (NSInteger index = 0; index < (NSInteger)kControlCount; ++index) {
@@ -641,7 +642,17 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         [owner setModalControlsHidden:YES];
         paperpad_present_problem_report((__bridge void*)presenter, ^{ [owner setModalControlsHidden:NO]; });
     }];
+    // Offered whenever the gameplay controls are hidden, including while a
+    // controller is still connected; evaluated each time the menu opens.
+    UIAction* showTouch = [UIAction actionWithTitle:@"Show Touch Controls"
+        image:[UIImage systemImageNamed:@"hand.tap"] identifier:nil
+        handler:^(__unused UIAction* action) { [owner showTouchControls]; }];
+    UIDeferredMenuElement* show = [UIDeferredMenuElement elementWithUncachedProvider:
+        ^(void (^completion)(NSArray<UIMenuElement*>*)) {
+            completion([owner gameplayControlsVisible] ? @[] : @[showTouch]);
+        }];
     return [UIMenu menuWithTitle:@"PaperPad" children:@[
+        show,
         settings,
         [UIMenu menuWithTitle:@"Controls" image:[UIImage systemImageNamed:@"gamecontroller"] identifier:nil options:0 children:@[touch, edit, reset]],
         [UIMenu menuWithTitle:@"Game Data & Saves" image:[UIImage systemImageNamed:@"externaldrive"] identifier:nil options:0 children:@[rom]],
@@ -671,6 +682,14 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         [UIAlertController alertControllerWithTitle:@"PaperPad"
                                             message:nil
                                      preferredStyle:UIAlertControllerStyleActionSheet];
+    if (![self gameplayControlsVisible]) {
+        [menu addAction:[UIAlertAction actionWithTitle:@"Show Touch Controls"
+                                                 style:UIAlertActionStyleDefault
+                                               handler:^(__unused UIAlertAction* action) {
+            [self setModalControlsHidden:NO];
+            [self showTouchControls];
+        }]];
+    }
     [menu addAction:[UIAlertAction actionWithTitle:@"Settings"
                                              style:UIAlertActionStyleDefault
                                            handler:^(__unused UIAlertAction* action) {
@@ -834,17 +853,50 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
 }
 
 - (void)setGameplayControlsEnabled:(BOOL)enabled opacity:(CGFloat)opacity {
-    _gameplayControlsEnabled = enabled;
     _globalOpacity = MAX(0.20, MIN(1.0, opacity));
     _utilityButton.alpha = MAX(0.55, _globalOpacity);
-    if (!enabled) [self clearInput];
+    PaperPadTouchVisibility next = _visibility;
+    next.enabled = enabled;
+    [self applyVisibility:next];
+}
+
+- (BOOL)gameplayControlsVisible {
+    return _visibility.gameplayVisible();
+}
+
+- (BOOL)gameplayControlsLive {
+    return _visibility.gameplayVisible() && !_modalControlsHidden;
+}
+
+- (void)applyVisibility:(PaperPadTouchVisibility)visibility {
+    const bool wasVisible = _visibility.gameplayVisible();
+    _visibility = visibility;
+    // Hidden controls must not keep a held button, stick, flick or tap alive.
+    if (wasVisible && !_visibility.gameplayVisible() && !_editing) [self clearInput];
     [self setNeedsDisplay];
 }
 
+- (void)setAutoHideWithController:(BOOL)enabled {
+    PaperPadTouchVisibility next = _visibility;
+    next.autoHide = enabled;
+    [self applyVisibility:next];
+}
+
+- (void)showTouchControls {
+    PaperPadTouchVisibility next = _visibility;
+    next.show();
+    [self applyVisibility:next];
+    NSMutableDictionary* settings = [NSMutableDictionary dictionaryWithDictionary:
+        [NSUserDefaults.standardUserDefaults dictionaryForKey:settingsDefaultsKey()] ?: @{}];
+    settings[@"touchControls"] = @YES;
+    settings[@"autoHideTouchControls"] = @NO;
+    [NSUserDefaults.standardUserDefaults setObject:settings forKey:settingsDefaultsKey()];
+}
+
 - (void)setPhysicalControllerConnected:(BOOL)connected {
-    _physicalControllerConnected = connected;
-    if (connected) [self clearInput];
-    [self setNeedsDisplay];
+    PaperPadTouchVisibility next = _visibility;
+    next.controllerReady = connected;
+    [self applyVisibility:next];
 }
 
 - (void)moveSelectedToPoint:(CGPoint)point {
@@ -968,8 +1020,7 @@ NSInteger resolutionModeFromSettings(NSDictionary* settings) {
         CGPoint point = [touch locationInView:self];
         if ([self handleToolbarPoint:point]) continue;
         NSInteger control = [self controlAtPoint:point includeHidden:_editing];
-        if (!_editing && _gameplayControlsEnabled && !_physicalControllerConnected &&
-            !_modalControlsHidden &&
+        if (!_editing && [self gameplayControlsLive] &&
             control == NSNotFound &&
             point.x <= CGRectGetMinX([self usableBounds]) + [self usableBounds].size.width * 0.47) {
             control = 0;
@@ -1079,6 +1130,9 @@ extern "C" void paperpad_touch_attach(void* window_pointer) {
             [settings[@"touchControls"] boolValue];
         CGFloat controlsOpacity = settings[@"touchOpacity"] == nil
             ? 0.70 : [settings[@"touchOpacity"] doubleValue];
+        [overlay setAutoHideWithController:PaperPadSavedAutoHide(
+            settings[@"autoHideTouchControls"] != nil,
+            [settings[@"autoHideTouchControls"] boolValue])];
         [overlay setGameplayControlsEnabled:controlsEnabled opacity:controlsOpacity];
         [overlay setPhysicalControllerConnected:
             g_physical_controller_connected.load(std::memory_order_relaxed)];
@@ -1138,6 +1192,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     UISlider* _slider;
     UILabel* _valueLabel;
     UISwitch* _enabledSwitch;
+    UISwitch* _autoHideSwitch;
     UISegmentedControl* _resolution;
     UISegmentedControl* _aspect;
 }
@@ -1190,7 +1245,9 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [self dismissViewControllerAnimated:YES completion:^{ [g_touch_overlay setModalControlsHidden:NO]; }];
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView*)tableView { return self.touchSettingsOnly ? 2 : 3; }
-- (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section { return 1; }
+- (NSInteger)tableView:(UITableView*)tableView numberOfRowsInSection:(NSInteger)section {
+    return self.touchSettingsOnly && section == 0 ? 2 : 1;
+}
 - (NSString*)tableView:(UITableView*)tableView titleForHeaderInSection:(NSInteger)section {
     return self.touchSettingsOnly ? @[@"On-screen Controls", @"Opacity"][section]
                                  : @[@"Volume", @"Resolution", @"Aspect Ratio"][section];
@@ -1208,10 +1265,23 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     UITableViewCell* cell = [[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil] autorelease];
     NSDictionary* saved = [self savedSettings];
     NSInteger section = indexPath.section;
+    if (self.touchSettingsOnly && section == 0 && indexPath.row == 1) {
+        cell.textLabel.text = @"Auto-hide Touch Controls with Controller";
+        cell.textLabel.numberOfLines = 0;
+        _autoHideSwitch = [[[UISwitch alloc] init] autorelease];
+        _autoHideSwitch.on = PaperPadSavedAutoHide(saved[@"autoHideTouchControls"] != nil,
+                                                   [saved[@"autoHideTouchControls"] boolValue]);
+        _autoHideSwitch.accessibilityLabel = cell.textLabel.text;
+        [_autoHideSwitch addTarget:self action:@selector(autoHideChanged:) forControlEvents:UIControlEventValueChanged];
+        cell.accessoryView = _autoHideSwitch;
+        return cell;
+    }
     if (self.touchSettingsOnly && section == 0) {
         cell.textLabel.text = @"Show Touch Controls";
         _enabledSwitch = [[[UISwitch alloc] init] autorelease];
-        _enabledSwitch.on = saved[@"touchControls"] == nil || [saved[@"touchControls"] boolValue];
+        // Reflect what the player sees, so turning this on always shows the
+        // controls, even with a controller still connected.
+        _enabledSwitch.on = [g_touch_overlay gameplayControlsVisible];
         _enabledSwitch.accessibilityLabel = cell.textLabel.text;
         [_enabledSwitch addTarget:self action:@selector(enabledChanged:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView = _enabledSwitch;
@@ -1267,8 +1337,18 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     [g_touch_overlay setGameplayControlsEnabled:enabled opacity:opacity];
 }
 - (void)enabledChanged:(UISwitch*)sender {
-    [self saveValue:@(sender.on) forKey:@"touchControls"];
-    [self applyTouchSettings];
+    if (sender.on) {
+        [g_touch_overlay showTouchControls];
+        _autoHideSwitch.on = NO;
+    } else {
+        [self saveValue:@NO forKey:@"touchControls"];
+        [self applyTouchSettings];
+    }
+}
+- (void)autoHideChanged:(UISwitch*)sender {
+    [self saveValue:@(sender.on) forKey:@"autoHideTouchControls"];
+    [g_touch_overlay setAutoHideWithController:sender.on];
+    _enabledSwitch.on = [g_touch_overlay gameplayControlsVisible];
 }
 - (void)sliderChanged:(UISlider*)sender {
     _valueLabel.text = [NSString stringWithFormat:@"%.0f%%", sender.value];
@@ -1292,6 +1372,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     NSTimer* _resolutionTimer;
     UISegmentedControl* _aspectControl;
     UISwitch* _touchControlsSwitch;
+    UISwitch* _autoHideSwitch;
     UISlider* _touchOpacitySlider;
     UILabel* _touchOpacityLabel;
 }
@@ -1389,6 +1470,17 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
                    forControlEvents:UIControlEventValueChanged];
     [touchControlsRow addArrangedSubview:_touchControlsSwitch];
     [stack addArrangedSubview:touchControlsRow];
+
+    UIStackView* autoHideRow = [[UIStackView alloc] init];
+    autoHideRow.axis = UILayoutConstraintAxisHorizontal;
+    autoHideRow.alignment = UIStackViewAlignmentCenter;
+    [autoHideRow addArrangedSubview:[self label:@"Auto-hide Touch Controls with Controller"]];
+    _autoHideSwitch = [[UISwitch alloc] init];
+    _autoHideSwitch.accessibilityLabel = @"Auto-hide Touch Controls with Controller";
+    [_autoHideSwitch addTarget:self action:@selector(autoHideChanged:)
+              forControlEvents:UIControlEventValueChanged];
+    [autoHideRow addArrangedSubview:_autoHideSwitch];
+    [stack addArrangedSubview:autoHideRow];
 
     UIStackView* touchOpacityRow = [[UIStackView alloc] init];
     touchOpacityRow.axis = UILayoutConstraintAxisHorizontal;
@@ -1531,12 +1623,15 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     NSInteger resolution = resolutionModeFromSettings(saved);
     int aspect = saved[@"aspect"] ? [saved[@"aspect"] intValue] : 0;
     BOOL touchControls = saved[@"touchControls"] == nil || [saved[@"touchControls"] boolValue];
+    BOOL autoHide = PaperPadSavedAutoHide(saved[@"autoHideTouchControls"] != nil,
+                                          [saved[@"autoHideTouchControls"] boolValue]);
     float touchOpacity = saved[@"touchOpacity"] ? [saved[@"touchOpacity"] floatValue] : 0.70f;
     _volumeSlider.value = volume * 100.0;
     _volumeLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(volume * 100.0)];
     _resolutionControl.selectedSegmentIndex = resolution;
     _aspectControl.selectedSegmentIndex = aspect;
     _touchControlsSwitch.on = touchControls;
+    _autoHideSwitch.on = autoHide;
     _touchOpacitySlider.value = touchOpacity * 100.0f;
     _touchOpacityLabel.text = [NSString stringWithFormat:@"%d%%", (int)lround(touchOpacity * 100.0f)];
     _touchOpacitySlider.accessibilityValue = _touchOpacityLabel.text;
@@ -1551,6 +1646,7 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
     if (_resolutionControl) saved[@"resolution"] = @(_resolutionControl.selectedSegmentIndex);
     if (_aspectControl) saved[@"aspect"] = @(_aspectControl.selectedSegmentIndex);
     if (_touchControlsSwitch) saved[@"touchControls"] = @(_touchControlsSwitch.isOn);
+    if (_autoHideSwitch) saved[@"autoHideTouchControls"] = @(_autoHideSwitch.isOn);
     if (_touchOpacitySlider) saved[@"touchOpacity"] = @(_touchOpacitySlider.value / 100.0);
     [NSUserDefaults.standardUserDefaults setObject:saved forKey:settingsDefaultsKey()];
 }
@@ -1568,6 +1664,11 @@ extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y) {
                                0);
     [self persist];
     [self refreshResolutionStatus];
+}
+
+- (void)autoHideChanged:(UISwitch*)control {
+    [g_touch_overlay setAutoHideWithController:control.isOn];
+    [self persist];
 }
 
 - (void)touchControlsChanged:(UISwitch*)control {
