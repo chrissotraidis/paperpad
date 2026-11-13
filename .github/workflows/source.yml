@@ -18,6 +18,8 @@ jobs:
         run: |
           c++ -std=c++20 -Isrc tests/controller_slots_test.cpp src/controller_slots.cpp -o /tmp/paperpad-controller-test
           /tmp/paperpad-controller-test
+          c++ -std=c++20 -Iapple/app tests/touch_visibility_test.cpp -o /tmp/paperpad-touch-visibility-test
+          /tmp/paperpad-touch-visibility-test
       - name: Verify PaperBoat pins and shared input mapping
         run: |
           python3 scripts/verify-paperboat.py

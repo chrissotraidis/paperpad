@@ -12,8 +12,9 @@ extern "C" {
 void PaperPad_SetTouchButtons(uint16_t buttons);
 void PaperPad_SetTouchStick(float x, float y);
 void PaperPad_ResetTouchInput(void);
-// Hides gameplay touch targets while an SDL/iOS physical controller is
-// connected, then restores them on disconnect according to the saved toggle.
+// Reports whether a usable physical controller owns Player 1, the player touch
+// drives. The overlay hides gameplay touch targets while that is true and the
+// saved Auto-hide Touch Controls with Controller setting is on.
 void PaperPad_SetPhysicalControllerConnected(int connected);
 void PaperPad_SetAudioVolume(float volume);
 void PaperPad_SetGraphicsConfig(int resolution_mode, int aspect_mode, int image_filter_mode);

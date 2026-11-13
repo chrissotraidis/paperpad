@@ -37,6 +37,7 @@
 
 #include "paperpad_input.h"
 #include "controller_slots.h"
+#include "controller_can_play.h"
 
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 extern "C" void paperpad_touch_snapshot(uint16_t* buttons, float* x, float* y);
@@ -661,20 +662,24 @@ namespace {
             std::lock_guard<std::mutex> lock(settings_mutex);
             preferred_controller_index = input_settings.preferred_controller_index;
         }
-        std::size_t connected_count = 0;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        bool player_one_ready = false;
+#endif
         {
             std::lock_guard<std::mutex> lock(controller_mutex);
             controller_backend.set_preferred_device_index(preferred_controller_index);
             const auto changes = controller_slots.reconcile(controller_backend);
             report_controller_changes(reason, changes);
-            connected_count = controller_slots.connected_count();
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+            player_one_ready =
+                paperpad::input::controller_can_play(controller_slots.player_handle(0));
+#endif
         }
 #if defined(__APPLE__) && TARGET_OS_IPHONE
-        const bool physically_connected = connected_count != 0;
         if (!reported_physical_controller_state.has_value()
-            || *reported_physical_controller_state != physically_connected) {
-            reported_physical_controller_state = physically_connected;
-            PaperPad_SetPhysicalControllerConnected(physically_connected);
+            || *reported_physical_controller_state != player_one_ready) {
+            reported_physical_controller_state = player_one_ready;
+            PaperPad_SetPhysicalControllerConnected(player_one_ready);
         }
 #endif
     }

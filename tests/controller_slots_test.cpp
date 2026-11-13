@@ -147,6 +147,13 @@ void test_two_controller_slots_are_preserved() {
     slots.reconcile(backend);
     require(slots.player_instance_id(0) == 101, "returning player 2 displaced player 1");
     require(slots.player_instance_id(1) == 303, "returning additional controller missed next free slot");
+
+    // Touch drives player 1: removing player 1's controller must leave player 1
+    // empty rather than moving player 2's controller into it.
+    backend.disconnect_without_event(101);
+    slots.reconcile(backend);
+    require(slots.player_handle(0) == nullptr, "removed player 1 controller kept player 1");
+    require(slots.player_instance_id(1) == 303, "player 2 moved after player 1 disconnected");
 }
 
 void test_foreground_resume_reconciles_missed_removal() {

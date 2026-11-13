@@ -157,6 +157,9 @@ if (BUILD_TESTING)
         src/controller_slots.cpp)
     target_include_directories(paperpad_controller_slots_test PRIVATE "${PAPERPAD_ROOT}/src")
     add_test(NAME paperpad_controller_slots COMMAND paperpad_controller_slots_test)
+    add_executable(paperpad_touch_visibility_test tests/touch_visibility_test.cpp)
+    target_include_directories(paperpad_touch_visibility_test PRIVATE "${PAPERPAD_ROOT}/apple/app")
+    add_test(NAME paperpad_touch_visibility COMMAND paperpad_touch_visibility_test)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -166,6 +169,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
         "${PAPERPAD_IOS_DIR}/diagnostics.mm"
         "${PAPERPAD_IOS_DIR}/diagnostics.h"
         "${PAPERPAD_IOS_DIR}/touch_tap_latch.h"
+        "${PAPERPAD_IOS_DIR}/touch_visibility.h"
         "${PAPERPAD_IOS_DIR}/PrivacyInfo.xcprivacy"
         "${PAPERPAD_IOS_DIR}/ThirdPartyNotices.txt"
         "${PAPERPAD_IOS_DIR}/Assets.xcassets")
