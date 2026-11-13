@@ -69,7 +69,7 @@
     },
     "sdl2": {
       "url": "https://github.com/chrissotraidis/SDL.git",
-      "commit": "c6756fcd3de8090a8f72ac1a0b6fb6e50f0021d1",
+      "commit": "090b0c5ade61395078f9ac0756474d9e475f7fa7",
       "path": "ref/SDL2"
     },
     "spdlog": {
