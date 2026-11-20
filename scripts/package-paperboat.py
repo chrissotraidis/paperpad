@@ -44,7 +44,9 @@ with tempfile.TemporaryDirectory(prefix='paperpad-boat-package-') as tmp:
     assert info['MinimumOSVersion']=='16.3'
     assert info.get('UIDeviceFamily')==[1,2], 'Boat must declare native iPhone and iPad support'
     assert info.get('UIRequiresFullScreen') is True
-    assert set(info.get('UISupportedInterfaceOrientations~ipad', []))=={'UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'}
+    # iPad also lists the portrait orientations (an external display needs them);
+    # both landscape orientations must still be there.
+    assert {'UIInterfaceOrientationLandscapeLeft','UIInterfaceOrientationLandscapeRight'} <= set(info.get('UISupportedInterfaceOrientations~ipad', []))
     assert subprocess.check_output(['lipo','-archs',str(app/'Paperboat')],text=True).strip()=='arm64'
     platform=subprocess.check_output(['xcrun','vtool','-show-build',str(app/'Paperboat')],text=True)
     assert re.search(r'platform\s+IOS\s',platform) and re.search(r'minos\s+16\.3\s',platform)
